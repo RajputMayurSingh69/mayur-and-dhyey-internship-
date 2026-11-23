@@ -31,8 +31,10 @@ class NotificationActionReceiver : BroadcastReceiver() {
         val slotName = intent.getStringExtra(NotificationHelper.EXTRA_SLOT_NAME) ?: ""
         val scheduledTime = intent.getStringExtra(NotificationHelper.EXTRA_SCHEDULED_TIME) ?: ""
 
-        // Dismiss the notification
-        NotificationManagerCompat.from(context).cancel(notificationId)
+        // Dismiss the notification safely
+        try {
+            NotificationManagerCompat.from(context).cancel(notificationId)
+        } catch (ignored: Exception) {}
 
         when (intent.action) {
             NotificationHelper.ACTION_MARK_TAKEN -> {

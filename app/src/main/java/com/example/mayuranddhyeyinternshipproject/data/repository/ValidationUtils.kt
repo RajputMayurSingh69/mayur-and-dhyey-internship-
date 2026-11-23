@@ -96,23 +96,32 @@ object ValidationUtils {
 
     /**
      * Evaluates dose status according to scheduled time and actual intake time.
+     * - Handles midnight wrap-around safely (e.g. scheduled at 23:55, taken at 00:05).
      * - ON_TIME: within ±15 minutes
      * - SLIGHTLY_LATE: 16–60 minutes late
      * - VERY_LATE: > 60 minutes late
      */
     fun evaluateDoseStatus(scheduledTime: String, takenTime: String): DoseStatus {
-        val sdf = SimpleDateFormat("HH:mm", Locale.US)
+        val sdf = SimpleDateFormat("HH:mm", Locale.US).apply { isLenient = false }
         return try {
             val schedDate = sdf.parse(scheduledTime) ?: return DoseStatus.ON_TIME
             val takenDate = sdf.parse(takenTime) ?: return DoseStatus.ON_TIME
 
-            val diffMinutes = (takenDate.time - schedDate.time) / (1000 * 60)
+            var diffMinutes = (takenDate.time - schedDate.time) / (1000 * 60)
+
+            // Normalize midnight wrap-around:
+            // If taken after midnight for a late night dose (e.g. scheduled 23:55, taken 00:05 -> diff is -1430 -> +10)
+            if (diffMinutes < -720) {
+                diffMinutes += 1440
+            } else if (diffMinutes > 720) {
+                diffMinutes -= 1440
+            }
 
             when {
                 diffMinutes in -15..15 -> DoseStatus.ON_TIME
                 diffMinutes in 16..60 -> DoseStatus.SLIGHTLY_LATE
                 diffMinutes > 60 -> DoseStatus.VERY_LATE
-                else -> DoseStatus.ON_TIME // Taken early
+                else -> DoseStatus.ON_TIME // Taken safely ahead of time
             }
         } catch (e: Exception) {
             DoseStatus.ON_TIME

@@ -1,6 +1,7 @@
 package com.example.mayuranddhyeyinternshipproject
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -30,10 +31,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         val securityPreferences = SecurityPreferences(this)
+        applyScreenPrivacy(securityPreferences.isScreenPrivacyEnabled)
 
         setContent {
             var isDarkMode by remember {
                 mutableStateOf(securityPreferences.isDarkMode)
+            }
+            var isScreenPrivacy by remember {
+                mutableStateOf(securityPreferences.isScreenPrivacyEnabled)
             }
 
             MedMateTheme(darkTheme = isDarkMode) {
@@ -47,12 +52,29 @@ class MainActivity : ComponentActivity() {
                             isDarkMode = enabled
                             securityPreferences.isDarkMode = enabled
                         },
+                        isScreenPrivacy = isScreenPrivacy,
+                        onToggleScreenPrivacy = { enabled ->
+                            isScreenPrivacy = enabled
+                            securityPreferences.isScreenPrivacyEnabled = enabled
+                            applyScreenPrivacy(enabled)
+                        },
                         onExitApp = {
                             finish()
                         }
                     )
                 }
             }
+        }
+    }
+
+    private fun applyScreenPrivacy(enabled: Boolean) {
+        if (enabled) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
     }
 }

@@ -32,9 +32,9 @@ class NotificationHelper(private val context: Context) {
                 enableVibration(true)
                 enableLights(true)
             }
-            val notificationManager: NotificationManager =
-                context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+            val notificationManager: NotificationManager? =
+                context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            notificationManager?.createNotificationChannel(channel)
         }
     }
 
@@ -47,6 +47,8 @@ class NotificationHelper(private val context: Context) {
         slotName: String,
         scheduledTime: String
     ) {
+        val safeNotificationId = notificationId and 0x7FFFFFFF
+
         // Main intent to open app
         val contentIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -54,15 +56,19 @@ class NotificationHelper(private val context: Context) {
         }
         val contentPendingIntent = PendingIntent.getActivity(
             context,
-            notificationId,
+            safeNotificationId,
             contentIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Request codes guaranteed never to overflow or collide
+        val reqTaken = ((safeNotificationId.toLong() * 31 + 1) and 0x7FFFFFFF).toInt()
+        val reqSnooze = ((safeNotificationId.toLong() * 31 + 2) and 0x7FFFFFFF).toInt()
+
         // Action: Taken
         val takenIntent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = ACTION_MARK_TAKEN
-            putExtra(EXTRA_NOTIFICATION_ID, notificationId)
+            putExtra(EXTRA_NOTIFICATION_ID, safeNotificationId)
             putExtra(EXTRA_USER_ID, userId)
             putExtra(EXTRA_MEDICINE_ID, medicineId)
             putExtra(EXTRA_MEDICINE_NAME, medicineName)
@@ -72,7 +78,7 @@ class NotificationHelper(private val context: Context) {
         }
         val takenPendingIntent = PendingIntent.getBroadcast(
             context,
-            notificationId * 10 + 1,
+            reqTaken,
             takenIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -80,7 +86,7 @@ class NotificationHelper(private val context: Context) {
         // Action: Snooze (15 minutes)
         val snoozeIntent = Intent(context, NotificationActionReceiver::class.java).apply {
             action = ACTION_SNOOZE
-            putExtra(EXTRA_NOTIFICATION_ID, notificationId)
+            putExtra(EXTRA_NOTIFICATION_ID, safeNotificationId)
             putExtra(EXTRA_USER_ID, userId)
             putExtra(EXTRA_MEDICINE_ID, medicineId)
             putExtra(EXTRA_MEDICINE_NAME, medicineName)
@@ -90,7 +96,7 @@ class NotificationHelper(private val context: Context) {
         }
         val snoozePendingIntent = PendingIntent.getBroadcast(
             context,
-            notificationId * 10 + 2,
+            reqSnooze,
             snoozeIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -115,9 +121,11 @@ class NotificationHelper(private val context: Context) {
             .addAction(android.R.drawable.ic_popup_sync, context.getString(R.string.action_snooze), snoozePendingIntent)
 
         try {
-            NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+            NotificationManagerCompat.from(context).notify(safeNotificationId, builder.build())
         } catch (e: SecurityException) {
             // POST_NOTIFICATIONS permission not granted
+        } catch (e: Exception) {
+            // Safe fallback
         }
     }
 

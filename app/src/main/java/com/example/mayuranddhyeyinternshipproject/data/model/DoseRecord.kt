@@ -1,10 +1,12 @@
 package com.example.mayuranddhyeyinternshipproject.data.model
 
+import androidx.annotation.Keep
 import com.google.firebase.firestore.IgnoreExtraProperties
 
 /**
  * Dose intake record stored under "users/{userId}/history/{historyId}".
  */
+@Keep
 @IgnoreExtraProperties
 data class DoseRecord(
     val id: String = "",

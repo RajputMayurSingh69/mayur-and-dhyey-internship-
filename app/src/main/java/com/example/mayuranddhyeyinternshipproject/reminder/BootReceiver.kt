@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.example.mayuranddhyeyinternshipproject.data.repository.AuthRepository
 import com.example.mayuranddhyeyinternshipproject.data.repository.MedicineRepository
+import com.google.firebase.FirebaseApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,6 +28,9 @@ class BootReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             scope.launch {
                 try {
+                    if (FirebaseApp.getApps(context).isEmpty()) {
+                        FirebaseApp.initializeApp(context)
+                    }
                     val authRepo = AuthRepository()
                     val userId = authRepo.getCurrentUserId()
                     if (!userId.isNullOrBlank()) {

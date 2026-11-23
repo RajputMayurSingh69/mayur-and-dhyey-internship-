@@ -14,7 +14,7 @@ import java.util.Calendar
  */
 class ReminderScheduler(private val context: Context) {
 
-    private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
 
     /**
      * Schedules daily reminders for all active slots of a medicine.
@@ -32,6 +32,7 @@ class ReminderScheduler(private val context: Context) {
      * Schedules a single exact alarm for a specific medicine slot.
      */
     fun scheduleExactSlotAlarm(medicine: Medicine, slot: TimeSlot, timeStr: String) {
+        if (alarmManager == null) return
         val parts = timeStr.split(":")
         if (parts.size != 2) return
         val hour = parts[0].toIntOrNull() ?: slot.defaultHour
@@ -89,13 +90,14 @@ class ReminderScheduler(private val context: Context) {
                 )
             }
         } catch (e: SecurityException) {
-            // Fallback for security restrictions
-            alarmManager.set(
-                AlarmManager.RTC_WAKEUP,
-                targetCal.timeInMillis,
-                pendingIntent
-            )
-        }
+            try {
+                alarmManager.set(
+                    AlarmManager.RTC_WAKEUP,
+                    targetCal.timeInMillis,
+                    pendingIntent
+                )
+            } catch (ignored: Exception) {}
+        } catch (ignored: Exception) {}
     }
 
     /**
@@ -110,9 +112,10 @@ class ReminderScheduler(private val context: Context) {
         scheduledTime: String,
         snoozeMinutes: Int = 15
     ) {
+        if (alarmManager == null) return
         val triggerAtMillis = System.currentTimeMillis() + (snoozeMinutes * 60 * 1000)
         val slot = TimeSlot.fromString(slotName)
-        val requestCode = generateRequestCode(medicineId, slot) + 9999
+        val requestCode = generateSnoozeRequestCode(medicineId, slot)
 
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             action = ACTION_REMINDER
@@ -138,11 +141,13 @@ class ReminderScheduler(private val context: Context) {
                 pendingIntent
             )
         } catch (e: Exception) {
-            alarmManager.set(
-                AlarmManager.RTC_WAKEUP,
-                triggerAtMillis,
-                pendingIntent
-            )
+            try {
+                alarmManager.set(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+            } catch (ignored: Exception) {}
         }
     }
 
@@ -150,6 +155,7 @@ class ReminderScheduler(private val context: Context) {
      * Cancels reminders for all slots of a medicine.
      */
     fun cancelMedicineReminders(medicineId: String) {
+        if (alarmManager == null) return
         TimeSlot.entries.forEach { slot ->
             val requestCode = generateRequestCode(medicineId, slot)
             val intent = Intent(context, AlarmReceiver::class.java)
@@ -167,7 +173,11 @@ class ReminderScheduler(private val context: Context) {
     }
 
     private fun generateRequestCode(medicineId: String, slot: TimeSlot): Int {
-        return (medicineId.hashCode() * 31 + slot.ordinal).let { if (it < 0) -it else it }
+        return (((medicineId.hashCode().toLong() * 31 + slot.ordinal) and 0x7FFFFFFF) % 1000000).toInt()
+    }
+
+    private fun generateSnoozeRequestCode(medicineId: String, slot: TimeSlot): Int {
+        return generateRequestCode(medicineId, slot) + 1000000
     }
 
     companion object {

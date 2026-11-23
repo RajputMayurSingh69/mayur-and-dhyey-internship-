@@ -32,6 +32,10 @@ class SecurityPreferences(context: Context) {
         get() = prefs.getBoolean(KEY_DARK_MODE, false)
         set(value) = prefs.edit().putBoolean(KEY_DARK_MODE, value).apply()
 
+    var isScreenPrivacyEnabled: Boolean
+        get() = prefs.getBoolean(KEY_SCREEN_PRIVACY, true) // Enabled by default for health data privacy
+        set(value) = prefs.edit().putBoolean(KEY_SCREEN_PRIVACY, value).apply()
+
     var cachedUserId: String?
         get() = prefs.getString(KEY_CACHED_USER_ID, null)
         set(value) = prefs.edit().putString(KEY_CACHED_USER_ID, value).apply()
@@ -46,6 +50,7 @@ class SecurityPreferences(context: Context) {
 
     companion object {
         private const val KEY_DARK_MODE = "pref_dark_mode"
+        private const val KEY_SCREEN_PRIVACY = "pref_screen_privacy"
         private const val KEY_CACHED_USER_ID = "pref_cached_user_id"
         private const val KEY_CACHED_USER_NAME = "pref_cached_user_name"
     }

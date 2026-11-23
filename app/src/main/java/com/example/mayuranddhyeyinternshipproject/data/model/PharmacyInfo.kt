@@ -1,8 +1,8 @@
 package com.example.mayuranddhyeyinternshipproject.data.model
 
-/**
- * Nearby Pharmacy entity with location and contact details.
- */
+import androidx.annotation.Keep
+
+@Keep
 data class PharmacyInfo(
     val id: String,
     val name: String,

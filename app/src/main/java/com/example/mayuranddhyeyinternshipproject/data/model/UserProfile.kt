@@ -1,11 +1,13 @@
 package com.example.mayuranddhyeyinternshipproject.data.model
 
+import androidx.annotation.Keep
 import com.google.firebase.firestore.IgnoreExtraProperties
 
 /**
  * User Profile data class stored in Cloud Firestore under "users/{userId}".
  * Health data notice: Contains user personal data; protected under Firestore security rules.
  */
+@Keep
 @IgnoreExtraProperties
 data class UserProfile(
     val uid: String = "",
