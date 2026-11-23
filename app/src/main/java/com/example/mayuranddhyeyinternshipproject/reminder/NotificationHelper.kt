@@ -13,6 +13,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.example.mayuranddhyeyinternshipproject.MainActivity
 import com.example.mayuranddhyeyinternshipproject.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Handles creation of Notification Channels and building reminder notifications
@@ -149,14 +152,16 @@ class NotificationHelper(private val context: Context) {
         }
 
         try {
-            com.example.mayuranddhyeyinternshipproject.data.repository.NotificationRepository(context).addNotification(
-                title = "Time for $medicineName",
-                message = "Please take your $medicineName ($dosage) scheduled for $slotName at $scheduledTime.",
-                medicineName = medicineName,
-                dosage = dosage,
-                slotName = slotName,
-                scheduledTime = scheduledTime
-            )
+            CoroutineScope(Dispatchers.IO).launch {
+                com.example.mayuranddhyeyinternshipproject.data.repository.NotificationRepository(context).addNotification(
+                    title = "Time for $medicineName",
+                    message = "Please take your $medicineName ($dosage) scheduled for $slotName at $scheduledTime.",
+                    medicineName = medicineName,
+                    dosage = dosage,
+                    slotName = slotName,
+                    scheduledTime = scheduledTime
+                )
+            }
         } catch (ignored: Exception) {}
     }
 

@@ -40,12 +40,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import com.example.mayuranddhyeyinternshipproject.data.model.MedMateNotification
 import com.example.mayuranddhyeyinternshipproject.data.repository.NotificationRepository
 import com.example.mayuranddhyeyinternshipproject.ui.components.EmptyStateView
@@ -62,6 +64,7 @@ fun NotificationScreen(
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val repository = remember { NotificationRepository(context) }
     val notifications by NotificationRepository.notificationsFlow.collectAsState()
 
@@ -75,7 +78,9 @@ fun NotificationScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        repository.clearAllNotifications()
+                        coroutineScope.launch {
+                            repository.clearAllNotifications()
+                        }
                         showClearConfirmDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
@@ -168,7 +173,11 @@ fun NotificationScreen(
                     items(notifications, key = { it.id }) { item ->
                         NotificationItemCard(
                             notification = item,
-                            onDelete = { repository.deleteNotification(item.id) }
+                            onDelete = {
+                                coroutineScope.launch {
+                                    repository.deleteNotification(item.id)
+                                }
+                            }
                         )
                     }
 
