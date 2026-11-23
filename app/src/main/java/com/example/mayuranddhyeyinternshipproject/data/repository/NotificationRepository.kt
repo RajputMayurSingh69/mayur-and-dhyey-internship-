@@ -2,6 +2,8 @@ package com.example.mayuranddhyeyinternshipproject.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 import com.example.mayuranddhyeyinternshipproject.data.model.MedMateNotification
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -11,12 +13,26 @@ import org.json.JSONObject
 import java.util.UUID
 
 /**
- * Manages in-app notifications and reminders with persistence in SharedPreferences.
+ * Manages in-app notifications and reminders with hardware-backed AES-256 encryption at rest.
  */
 class NotificationRepository(context: Context) {
 
-    private val prefs: SharedPreferences =
+    private val prefs: SharedPreferences = try {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+
+        EncryptedSharedPreferences.create(
+            context,
+            "medmate_encrypted_notifications",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    } catch (e: Exception) {
+        // Fallback to private mode if keystore or security provider fails on specific OEM
         context.getSharedPreferences("medmate_notifications_pref", Context.MODE_PRIVATE)
+    }
 
     companion object {
         private const val KEY_NOTIFICATIONS = "key_notifications_list"

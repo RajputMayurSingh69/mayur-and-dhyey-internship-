@@ -89,14 +89,15 @@ class AuthRepository(
                 return Result.failure(IllegalStateException("Account already exists, please sign in"))
             }
 
-            // Check 2: Phone number already exists in Firestore users
-            if (isPhoneRegistered(cleanPhone)) {
-                return Result.failure(IllegalStateException("Phone number already registered with another account"))
-            }
-
             // Create Firebase Auth user
             val authResult = auth.createUserWithEmailAndPassword(cleanEmail, password).await()
             val user = authResult.user ?: return Result.failure(IllegalStateException("User creation failed."))
+
+            // Check 2: Phone number uniqueness verification (user is now authenticated, satisfying security rules)
+            if (isPhoneRegistered(cleanPhone)) {
+                try { user.delete().await() } catch (ignored: Exception) {}
+                return Result.failure(IllegalStateException("Phone number already registered with another account"))
+            }
 
             val profile = UserProfile(
                 uid = user.uid,
