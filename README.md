@@ -52,6 +52,7 @@ MedMate is a complete, modern Android medicine reminder and adherence tracking a
    - Notification channel with High importance (`medmate_reminders`).
    - Interactive notification action buttons: **"Taken"** (records dose instantly) and **"Snooze"** (reschedules for 15 minutes).
    - `BOOT_COMPLETED` broadcast receiver automatically reschedules all active alarms upon device reboot.
+   - *Note*: Verify on a real device that alarms are restored after reboot. If they are not restored with exported=false, switch to exported=true; the action check in onReceive keeps it safe.
 
 9. **Security & Data Protection**:
    - Production-grade Cloud Firestore security rules in `firestore.rules` (strict tenant isolation: `request.auth.uid == userId`).
