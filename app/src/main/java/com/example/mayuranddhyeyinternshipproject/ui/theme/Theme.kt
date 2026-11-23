@@ -1,58 +1,74 @@
 package com.example.mayuranddhyeyinternshipproject.ui.theme
 
-import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
-
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
-)
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
+    primary = TealPrimary,
     onPrimary = Color.White,
+    primaryContainer = SoftSurfaceVariant,
+    onPrimaryContainer = TealPrimaryDark,
+    secondary = TealSecondary,
     onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    secondaryContainer = MintAccent.copy(alpha = 0.25f),
+    onSecondaryContainer = TealPrimaryDark,
+    tertiary = MintAccent,
+    onTertiary = TextPrimary,
+    background = SoftBackground,
+    onBackground = TextPrimary,
+    surface = SoftSurface,
+    onSurface = TextPrimary,
+    surfaceVariant = SoftSurfaceVariant,
+    onSurfaceVariant = TextSecondary,
+    outline = CardBorder,
+    error = StatusError,
+    onError = Color.White,
+    errorContainer = StatusErrorBg,
+    onErrorContainer = StatusError
+)
+
+private val DarkColorScheme = darkColorScheme(
+    primary = TealPrimaryLight,
+    onPrimary = Color(0xFF003831),
+    primaryContainer = Color(0xFF004C40),
+    onPrimaryContainer = MintAccent,
+    secondary = MintAccent,
+    onSecondary = Color(0xFF003831),
+    background = DarkBackground,
+    onBackground = DarkTextPrimary,
+    surface = DarkSurface,
+    onSurface = DarkTextPrimary,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkTextSecondary,
+    outline = Color(0xFF334644),
+    error = Color(0xFFEF9A9A),
+    onError = Color(0xFF5D0005)
+)
+
+val MedMateShapes = Shapes(
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(32.dp)
 )
 
 @Composable
-fun MayurAndDhyeyInternshipProjectTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+fun MedMateTheme(
+    darkTheme: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = MedMateShapes,
         content = content
     )
 }

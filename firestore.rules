@@ -1,0 +1,312 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users/{userId}
+    // Document ID: Firebase Auth UID of the user
+    // Fields:
+    //   - fullName: string (required, 1..100 characters)
+    //   - email: string (required, valid email ending in @gmail.com)
+    //   - phone: string (required, exactly 10 digits)
+    //   - dob: string (required, format YYYY-MM-DD)
+    //   - defaultTimes: map (optional, time slot mappings, max 20 keys)
+    //   - pharmacy: map (optional, pharmacy details, max 20 keys)
+    //   - prescriber: map (optional, prescriber details, max 20 keys)
+    //   - pharmacyName, pharmacyContact, pharmacyAddress: string (optional, legacy/flat fields)
+    //   - doctorName, doctorContact: string (optional, legacy/flat fields)
+    //   - createdAt: timestamp or int/number (required, immutable on update)
+    //   - updatedAt: timestamp or int/number (required)
+    //   - uid / id: string (optional, must match userId if present, immutable)
+    //
+    // Collection: users/{userId}/medicines/{medicineId}
+    // Document ID: Medicine unique document ID
+    // Fields:
+    //   - id: string (required, 1..100 characters, immutable on update)
+    //   - name: string (required, 1..100 characters)
+    //   - dosage: string (required, 1..50 characters)
+    //   - form: string (required, 1..50 characters)
+    //   - reminderTimes: list or map (required, max 24 items/keys)
+    //   - notes: string (optional, 0..500 characters)
+    //   - pharmacy: map or string (optional, map max 20 keys or string <= 200 chars)
+    //   - prescriber: map or string (optional, map max 20 keys or string <= 200 chars)
+    //   - pharmacyName, pharmacyContact: string (optional flat fields, <= 100 chars)
+    //   - doctorName, doctorContact: string (optional flat fields, <= 100 chars)
+    //   - createdAt: timestamp or int/number (required, immutable on update)
+    //   - updatedAt: timestamp or int/number (required)
+    //   - userId / uid: string (optional, must match userId if present, immutable)
+    //
+    // Collection: users/{userId}/history/{historyId}
+    // Document ID: Intake dose log unique ID
+    // Fields:
+    //   - id: string (required, 1..100 characters, immutable on update)
+    //   - medicineId: string (required, 1..100 characters, immutable on update)
+    //   - medicineName: string (required, 1..100 characters)
+    //   - scheduledTime: timestamp or string (required, scheduled dose time)
+    //   - takenTime: timestamp, string, or null (optional, when dose was taken)
+    //   - status: string (required, enum: 'ON_TIME', 'SLIGHTLY_LATE', 'VERY_LATE', 'MISSED')
+    //   - notes: string (optional, 0..500 characters)
+    //   - dosage: string (optional, 0..50 characters)
+    //   - slot: string (optional, 0..50 characters)
+    //   - date: string (optional, YYYY-MM-DD date string)
+    //   - createdAt / timestamp: timestamp or int/number (required, immutable on update)
+    //   - updatedAt: timestamp or int/number (optional)
+    //   - userId / uid: string (optional, must match userId if present, immutable)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user is the owner of the document path
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Allow phone uniqueness verification queries during sign-up
+    // Enforces authentication and strict limit <= 1 to prevent user enumeration
+    function isPhoneCheckQuery() {
+      return isAuthenticated() &&
+             ('limit' in request.query) &&
+             request.query.limit <= 1;
+    }
+
+    // Check if a field is a valid timestamp or numeric epoch milliseconds
+    function isValidTimeField(val) {
+      return val is timestamp || val is int || val is number;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    // Validate user profile schema and constraints
+    function isValidUser(data, userId) {
+      let requiredFields = ['fullName', 'email', 'phone', 'dob'];
+      let allowedFields = [
+        'fullName', 'email', 'phone', 'dob',
+        'defaultTimes', 'pharmacy', 'prescriber',
+        'pharmacyName', 'pharmacyContact', 'pharmacyAddress',
+        'doctorName', 'doctorContact',
+        'createdAt', 'updatedAt', 'id', 'uid'
+      ];
+
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             // fullName validation
+             data.fullName is string &&
+             data.fullName.size() >= 1 &&
+             data.fullName.size() <= 100 &&
+             // email validation (must end with @gmail.com)
+             data.email is string &&
+             data.email.size() >= 11 &&
+             data.email.size() <= 100 &&
+             data.email.matches('^[a-zA-Z0-9._%+-]+@gmail[.]com$') &&
+             // phone validation (exactly 10 digits)
+             data.phone is string &&
+             data.phone.matches('^[0-9]{10}$') &&
+             // dob validation (YYYY-MM-DD)
+             data.dob is string &&
+             data.dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+             // timestamps / epoch millis
+             ('createdAt' in data && isValidTimeField(data.createdAt)) &&
+             ('updatedAt' in data && isValidTimeField(data.updatedAt)) &&
+             // optional maps
+             (!('defaultTimes' in data) || (data.defaultTimes is map && data.defaultTimes.keys().size() <= 20)) &&
+             (!('pharmacy' in data) || (data.pharmacy is map && data.pharmacy.keys().size() <= 20)) &&
+             (!('prescriber' in data) || (data.prescriber is map && data.prescriber.keys().size() <= 20)) &&
+             // optional flat strings
+             (!('pharmacyName' in data) || (data.pharmacyName is string && data.pharmacyName.size() <= 100)) &&
+             (!('pharmacyContact' in data) || (data.pharmacyContact is string && data.pharmacyContact.size() <= 50)) &&
+             (!('pharmacyAddress' in data) || (data.pharmacyAddress is string && data.pharmacyAddress.size() <= 200)) &&
+             (!('doctorName' in data) || (data.doctorName is string && data.doctorName.size() <= 100)) &&
+             (!('doctorContact' in data) || (data.doctorContact is string && data.doctorContact.size() <= 50)) &&
+             // optional identity scoping
+             (!('uid' in data) || data.uid == userId) &&
+             (!('id' in data) || data.id == userId);
+    }
+
+    // Validate user profile update (protects immutable fields and schema)
+    function isUserUpdateValid(userId) {
+      return isValidUser(request.resource.data, userId) &&
+             (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+             (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid) &&
+             (!('id' in resource.data) || request.resource.data.id == resource.data.id);
+    }
+
+    // Validate medicine document schema and constraints
+    function isValidMedicine(data, medicineId, userId) {
+      let requiredFields = ['id', 'name', 'dosage', 'form', 'reminderTimes'];
+      let allowedFields = [
+        'id', 'name', 'dosage', 'form', 'notes', 'reminderTimes',
+        'pharmacy', 'prescriber', 'pharmacyName', 'pharmacyContact',
+        'doctorName', 'doctorContact', 'createdAt', 'updatedAt',
+        'userId', 'uid'
+      ];
+
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             // id validation
+             data.id is string &&
+             data.id.size() >= 1 &&
+             data.id.size() <= 100 &&
+             // name validation
+             data.name is string &&
+             data.name.size() >= 1 &&
+             data.name.size() <= 100 &&
+             // dosage validation
+             data.dosage is string &&
+             data.dosage.size() >= 1 &&
+             data.dosage.size() <= 50 &&
+             // form validation
+             data.form is string &&
+             data.form.size() >= 1 &&
+             data.form.size() <= 50 &&
+             // reminderTimes validation (map or list, bounded size <= 24)
+             ((data.reminderTimes is list && data.reminderTimes.size() <= 24) ||
+              (data.reminderTimes is map && data.reminderTimes.keys().size() <= 24)) &&
+             // timestamps / epoch millis
+             ('createdAt' in data && isValidTimeField(data.createdAt)) &&
+             ('updatedAt' in data && isValidTimeField(data.updatedAt)) &&
+             // optional notes
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+             // optional pharmacy (map or string)
+             (!('pharmacy' in data) ||
+              (data.pharmacy is map && data.pharmacy.keys().size() <= 20) ||
+              (data.pharmacy is string && data.pharmacy.size() <= 200)) &&
+             // optional prescriber (map or string)
+             (!('prescriber' in data) ||
+              (data.prescriber is map && data.prescriber.keys().size() <= 20) ||
+              (data.prescriber is string && data.prescriber.size() <= 200)) &&
+             // optional flat contact fields
+             (!('pharmacyName' in data) || (data.pharmacyName is string && data.pharmacyName.size() <= 100)) &&
+             (!('pharmacyContact' in data) || (data.pharmacyContact is string && data.pharmacyContact.size() <= 50)) &&
+             (!('doctorName' in data) || (data.doctorName is string && data.doctorName.size() <= 100)) &&
+             (!('doctorContact' in data) || (data.doctorContact is string && data.doctorContact.size() <= 50)) &&
+             // optional ownership scoping
+             (!('userId' in data) || data.userId == userId) &&
+             (!('uid' in data) || data.uid == userId);
+    }
+
+    // Validate medicine update (protects immutable fields and schema)
+    function isMedicineUpdateValid(medicineId, userId) {
+      return isValidMedicine(request.resource.data, medicineId, userId) &&
+             (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+             request.resource.data.id == resource.data.id &&
+             (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId) &&
+             (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid);
+    }
+
+    // Validate history document schema and constraints
+    function isValidHistory(data, historyId, userId) {
+      let requiredFields = ['id', 'medicineId', 'medicineName', 'scheduledTime', 'status'];
+      let allowedFields = [
+        'id', 'medicineId', 'medicineName', 'scheduledTime', 'status',
+        'takenTime', 'date', 'dosage', 'slot', 'notes',
+        'createdAt', 'timestamp', 'updatedAt', 'userId', 'uid'
+      ];
+      let validStatuses = ['ON_TIME', 'SLIGHTLY_LATE', 'VERY_LATE', 'MISSED'];
+
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             // id validation
+             data.id is string &&
+             data.id.size() >= 1 &&
+             data.id.size() <= 100 &&
+             // medicineId validation
+             data.medicineId is string &&
+             data.medicineId.size() >= 1 &&
+             data.medicineId.size() <= 100 &&
+             // medicineName validation
+             data.medicineName is string &&
+             data.medicineName.size() >= 1 &&
+             data.medicineName.size() <= 100 &&
+             // scheduledTime validation (timestamp or formatted time string)
+             (data.scheduledTime is timestamp ||
+              (data.scheduledTime is string && data.scheduledTime.size() >= 1 && data.scheduledTime.size() <= 50)) &&
+             // status validation (strict enum)
+             data.status in validStatuses &&
+             // createdAt / timestamp validation
+             (('createdAt' in data && isValidTimeField(data.createdAt)) ||
+              ('timestamp' in data && isValidTimeField(data.timestamp))) &&
+             // optional takenTime (timestamp, string, or null)
+             (!('takenTime' in data) ||
+              data.takenTime == null ||
+              data.takenTime is timestamp ||
+              (data.takenTime is string && data.takenTime.size() <= 50)) &&
+             // optional metadata
+             (!('date' in data) || (data.date is string && data.date.size() <= 20)) &&
+             (!('dosage' in data) || (data.dosage is string && data.dosage.size() <= 50)) &&
+             (!('slot' in data) || (data.slot is string && data.slot.size() <= 50)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+             (!('updatedAt' in data) || isValidTimeField(data.updatedAt)) &&
+             // optional ownership scoping
+             (!('userId' in data) || data.userId == userId) &&
+             (!('uid' in data) || data.uid == userId);
+    }
+
+    // Validate history update (protects immutable fields and schema)
+    function isHistoryUpdateValid(historyId, userId) {
+      return isValidHistory(request.resource.data, historyId, userId) &&
+             (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+             (!('timestamp' in resource.data) || request.resource.data.timestamp == resource.data.timestamp) &&
+             request.resource.data.id == resource.data.id &&
+             request.resource.data.medicineId == resource.data.medicineId &&
+             (!('userId' in resource.data) || request.resource.data.userId == resource.data.userId) &&
+             (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // Root default deny rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User profile documents
+    match /users/{userId} {
+      // Direct get is allowed only for the document owner
+      allow get: if isOwner(userId);
+
+      // List is allowed for the owner, or for authenticated users checking phone uniqueness with limit <= 1
+      allow list: if isOwner(userId) || isPhoneCheckQuery();
+
+      // Create only allowed for the authenticated owner with valid schema
+      allow create: if isOwner(userId) && isValidUser(request.resource.data, userId);
+
+      // Update only allowed for the authenticated owner with schema and immutability checks
+      allow update: if isOwner(userId) && isUserUpdateValid(userId);
+
+      // Delete only allowed for the authenticated owner
+      allow delete: if isOwner(userId);
+
+      // Medicines subcollection
+      match /medicines/{medicineId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidMedicine(request.resource.data, medicineId, userId);
+        allow update: if isOwner(userId) && isMedicineUpdateValid(medicineId, userId);
+        allow delete: if isOwner(userId);
+      }
+
+      // Intake History subcollection
+      match /history/{historyId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidHistory(request.resource.data, historyId, userId);
+        allow update: if isOwner(userId) && isHistoryUpdateValid(historyId, userId);
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

@@ -1,3 +1,46 @@
 <resources>
-    <string name="app_name">Mayur and Dhyey Internship Project</string>
+    <string name="app_name">MedMate</string>
+    <string name="app_tagline">Your Personal Health &amp; Medicine Companion</string>
+    
+    <!-- Splash & Auth -->
+    <string name="quote_splash">Taking your medicine on time is taking care of yourself.</string>
+    <string name="sign_in">Sign In</string>
+    <string name="sign_up">Sign Up</string>
+    <string name="create_account">Create new account</string>
+    <string name="already_have_account">Already have an account? Sign In</string>
+    <string name="email_hint">Email (e.g. user@gmail.com)</string>
+    <string name="password_hint">Password (exactly 8 chars, letters &amp; numbers)</string>
+    <string name="full_name_hint">Full Name (letters &amp; spaces only)</string>
+    <string name="dob_hint">Date of Birth (YYYY-MM-DD)</string>
+    <string name="phone_hint">Phone Number (10 digits)</string>
+    
+    <!-- Home & Slots -->
+    <string name="slot_morning">Morning</string>
+    <string name="slot_afternoon">Afternoon</string>
+    <string name="slot_evening">Evening</string>
+    <string name="slot_night">Night</string>
+    <string name="mark_as_taken">Mark as Taken</string>
+    <string name="status_taken">Taken</string>
+    <string name="status_pending">Pending</string>
+    <string name="status_missed">Missed</string>
+    
+    <!-- Feedback Dialogs -->
+    <string name="taken_on_time_title">Well Done!</string>
+    <string name="taken_on_time_msg">Great job! You took your medicine on time. Keep it up!</string>
+    <string name="taken_late_title">Taken Late</string>
+    <string name="taken_late_msg">You took your medicine a bit late today. Try to be on time next time.</string>
+    <string name="taken_very_late_title">Careful</string>
+    <string name="taken_very_late_msg">Warning: This medicine was taken at the wrong time. Please consult your doctor if unsure.</string>
+    
+    <!-- Exit Confirmation -->
+    <string name="exit_dialog_title">Exit MedMate</string>
+    <string name="exit_dialog_msg">Do you want to exit MedMate?</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
+
+    <!-- Notifications -->
+    <string name="notification_channel_name">Medicine Reminders</string>
+    <string name="notification_channel_desc">Reminders to take scheduled medicines on time</string>
+    <string name="action_taken">Taken</string>
+    <string name="action_snooze">Snooze (15m)</string>
 </resources>
