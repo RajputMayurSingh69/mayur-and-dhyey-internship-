@@ -17,8 +17,8 @@ service cloud.firestore {
     //   - defaultTimes: map (optional, time slot mappings, max 20 keys)
     //   - pharmacy: map (optional, pharmacy details, max 20 keys)
     //   - prescriber: map (optional, prescriber details, max 20 keys)
-    //   - pharmacyName, pharmacyContact, pharmacyAddress: string (optional, legacy/flat fields)
-    //   - doctorName, doctorContact: string (optional, legacy/flat fields)
+    //   - pharmacyName, pharmacyContact, pharmacyAddress: string (optional, flat fields)
+    //   - doctorName, doctorContact: string (optional, flat fields)
     //   - createdAt: timestamp or int/number (required, immutable on update)
     //   - updatedAt: timestamp or int/number (required)
     //   - uid / id: string (optional, must match userId if present, immutable)
@@ -57,6 +57,12 @@ service cloud.firestore {
     //   - updatedAt: timestamp or int/number (optional)
     //   - userId / uid: string (optional, must match userId if present, immutable)
     //
+    // Collection: phone_index/{hash}
+    // Document ID: Hash of user phone number for registration uniqueness checking
+    // Fields:
+    //   - uid: string (required, matches request.auth.uid, 1..128 characters)
+    //   - createdAt: timestamp or int/number (required)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -73,14 +79,6 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Allow phone uniqueness verification queries during sign-up
-    // Enforces authentication and strict limit <= 1 to prevent user enumeration
-    function isPhoneCheckQuery() {
-      return isAuthenticated() &&
-             ('limit' in request.query) &&
-             request.query.limit <= 1;
-    }
-
     // Check if a field is a valid timestamp or numeric epoch milliseconds
     function isValidTimeField(val) {
       return val is timestamp || val is int || val is number;
@@ -89,6 +87,17 @@ service cloud.firestore {
     // ===============================================================
     // Domain Validators
     // ===============================================================
+
+    // Validate phone_index document schema and constraints
+    function isValidPhoneIndex(data) {
+      let allowedKeys = ['uid', 'createdAt'];
+      return data.keys().hasAll(allowedKeys) &&
+             data.keys().hasOnly(allowedKeys) &&
+             data.uid is string &&
+             data.uid.size() >= 1 &&
+             data.uid.size() <= 128 &&
+             isValidTimeField(data.createdAt);
+    }
 
     // Validate user profile schema and constraints
     function isValidUser(data, userId) {
@@ -275,13 +284,25 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // User profile documents
-    match /users/{userId} {
-      // Direct get is allowed only for the document owner
-      allow get: if isOwner(userId);
+    // Phone index for registration uniqueness checking without exposing user profiles
+    match /phone_index/{hash} {
+      // Allow authenticated get to verify whether phone hash is already registered
+      allow get: if isAuthenticated();
 
-      // List is allowed for the owner, or for authenticated users checking phone uniqueness with limit <= 1
-      allow list: if isOwner(userId) || isPhoneCheckQuery();
+      // Allow create only if authenticated, document does not exist, uid matches auth.uid, and data is valid
+      allow create: if isAuthenticated() &&
+                       !exists(/databases/$(database)/documents/phone_index/$(hash)) &&
+                       request.resource.data.uid == request.auth.uid &&
+                       isValidPhoneIndex(request.resource.data);
+
+      // Strictly deny list, update, and delete
+      allow list, update, delete: if false;
+    }
+
+    // User profile documents - strictly owner only
+    match /users/{userId} {
+      // Read allowed only for the document owner
+      allow read: if isOwner(userId);
 
       // Create only allowed for the authenticated owner with valid schema
       allow create: if isOwner(userId) && isValidUser(request.resource.data, userId);

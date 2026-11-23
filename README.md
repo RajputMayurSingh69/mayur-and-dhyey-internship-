@@ -59,6 +59,7 @@ MedMate is a complete, modern Android medicine reminder and adherence tracking a
    - Encrypted local storage via `EncryptedSharedPreferences` (AES-256 GCM).
    - Cleartext traffic disabled (`android:usesCleartextTraffic="false"`).
    - No sensitive medical data or PII logged to Logcat.
+   - *Phone Number Hashing Note*: Unhashed 10-digit phone numbers can be guessed offline if the hash is ever leaked. For stronger protection later, move the hash to a Cloud Function with a secret salt (HMAC).
 
 ---
 
