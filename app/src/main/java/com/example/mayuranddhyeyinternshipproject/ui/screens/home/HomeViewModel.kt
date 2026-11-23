@@ -143,8 +143,27 @@ class HomeViewModel(
 
             result.fold(
                 onSuccess = { record ->
-                    _uiState.update {
-                        it.copy(
+                    _uiState.update { current ->
+                        val updatedRecords = listOf(record) + current.todayRecords.filter { it.id != record.id }
+                        val updatedSlotMap = current.slotMedicines.toMutableMap().mapValues { (slot, list) ->
+                            list.map { slotMed ->
+                                if (slotMed.medicine.id == item.medicine.id && slotMed.slot == item.slot) {
+                                    slotMed.copy(
+                                        isTaken = true,
+                                        doseRecord = record,
+                                        status = DoseStatus.fromString(record.status)
+                                    )
+                                } else {
+                                    slotMed
+                                }
+                            }
+                        }
+                        val newTakenDoses = updatedSlotMap.values.flatten().count { it.isTaken }
+
+                        current.copy(
+                            todayRecords = updatedRecords,
+                            slotMedicines = updatedSlotMap,
+                            takenDosesToday = newTakenDoses,
                             lastRecordedStatus = DoseStatus.fromString(record.status),
                             showFeedbackDialog = true
                         )

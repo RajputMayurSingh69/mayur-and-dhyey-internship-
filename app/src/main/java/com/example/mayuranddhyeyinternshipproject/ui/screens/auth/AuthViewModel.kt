@@ -100,6 +100,39 @@ class AuthViewModel(
         }
     }
 
+    fun signInWithGoogle(credential: com.google.firebase.auth.AuthCredential) {
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        viewModelScope.launch {
+            val result = authRepository.signInWithGoogleCredential(credential)
+            result.fold(
+                onSuccess = { profile ->
+                    securityPreferences?.cachedUserId = profile.uid
+                    securityPreferences?.cachedUserName = profile.fullName
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isSuccess = true,
+                            userProfile = profile,
+                            errorMessage = null
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = error.localizedMessage ?: "Google sign in failed. Please try again."
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun setErrorMessage(message: String) {
+        _uiState.update { it.copy(errorMessage = message, isLoading = false) }
+    }
+
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
     }

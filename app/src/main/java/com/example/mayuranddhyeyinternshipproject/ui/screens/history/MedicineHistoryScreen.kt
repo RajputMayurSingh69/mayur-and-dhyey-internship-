@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -64,9 +65,14 @@ fun MedicineHistoryScreen(
     onNavigateBack: () -> Unit,
     onNavigateToHome: () -> Unit,
     onNavigateToMedicines: () -> Unit,
-    onNavigateToProfile: () -> Unit
+    onNavigateToProfile: () -> Unit,
+    onNavigateToNotifications: () -> Unit = {}
 ) {
     val uiState by historyViewModel.uiState.collectAsState()
+
+    LaunchedEffect(Unit) {
+        historyViewModel.loadHistory()
+    }
 
     Scaffold(
         topBar = {
@@ -75,7 +81,8 @@ fun MedicineHistoryScreen(
                 subtitle = "Past doses and intake compliance",
                 canNavigateBack = true,
                 onNavigateBack = onNavigateBack,
-                showNotificationIcon = true
+                showNotificationIcon = true,
+                onNotificationClick = onNavigateToNotifications
             )
         },
         bottomBar = {

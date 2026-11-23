@@ -104,11 +104,16 @@ fun HomeScreen(
     onNavigateToHistory: () -> Unit,
     onNavigateToMedicineList: () -> Unit,
     onNavigateToProfile: () -> Unit,
+    onNavigateToNotifications: () -> Unit = {},
     onAddMedicine: () -> Unit,
     onExitApp: () -> Unit
 ) {
     val uiState by homeViewModel.uiState.collectAsState()
     val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        homeViewModel.loadData()
+    }
 
     var showExitDialog by remember { mutableStateOf(false) }
     var showPermissionRationale by remember { mutableStateOf(false) }
@@ -165,9 +170,7 @@ fun HomeScreen(
                 subtitle = "Stay consistent with your medicines",
                 showSettings = false,
                 showNotificationIcon = true,
-                onNotificationClick = {
-                    Toast.makeText(context, "Medicine reminder notifications are active", Toast.LENGTH_SHORT).show()
-                }
+                onNotificationClick = onNavigateToNotifications
             )
         },
         bottomBar = {
@@ -194,8 +197,7 @@ fun HomeScreen(
                 TodaySummaryCard(
                     totalDoses = uiState.totalDosesToday,
                     takenDoses = uiState.takenDosesToday,
-                    onAddMedicineClick = onAddMedicine,
-                    context = context
+                    onAddMedicineClick = onAddMedicine
                 )
             }
 
@@ -297,8 +299,7 @@ fun HomeScreen(
 fun TodaySummaryCard(
     totalDoses: Int,
     takenDoses: Int,
-    onAddMedicineClick: () -> Unit,
-    context: android.content.Context
+    onAddMedicineClick: () -> Unit
 ) {
     val progress = if (totalDoses > 0) (takenDoses.toFloat() / totalDoses.toFloat()).coerceIn(0f, 1f) else 0f
     val percent = (progress * 100).toInt()
@@ -373,26 +374,6 @@ fun TodaySummaryCard(
                             color = StatusSuccess
                         )
                     )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        val scheduler = com.example.mayuranddhyeyinternshipproject.reminder.ReminderScheduler(context)
-                        scheduler.scheduleTestAlarm("Paracetamol", "500 mg", 5)
-                        Toast.makeText(context, "Test alarm set! Ringing in 5 seconds with sound and popup.", Toast.LENGTH_LONG).show()
-                    },
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Test Alarm (5s)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
                 }
             }
         }

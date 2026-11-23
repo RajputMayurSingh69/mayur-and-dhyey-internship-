@@ -68,7 +68,8 @@ fun MedicineListScreen(
     onEditMedicine: (String) -> Unit,
     onNavigateToHome: () -> Unit,
     onNavigateToHistory: () -> Unit,
-    onNavigateToProfile: () -> Unit
+    onNavigateToProfile: () -> Unit,
+    onNavigateToNotifications: () -> Unit = {}
 ) {
     val uiState by medicineViewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -111,7 +112,8 @@ fun MedicineListScreen(
                 subtitle = "Manage dosage, forms & reminder slots",
                 canNavigateBack = true,
                 onNavigateBack = onNavigateBack,
-                showNotificationIcon = true
+                showNotificationIcon = true,
+                onNotificationClick = onNavigateToNotifications
             )
         },
         floatingActionButton = {

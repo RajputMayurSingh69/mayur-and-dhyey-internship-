@@ -89,11 +89,6 @@ fun ProfileScreen(
         )
     }
 
-    var pharmacyName by rememberSaveable { mutableStateOf("") }
-    var pharmacyContact by rememberSaveable { mutableStateOf("") }
-    var doctorName by rememberSaveable { mutableStateOf("") }
-    var doctorContact by rememberSaveable { mutableStateOf("") }
-
     var showSuccessToast by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.profile) {
@@ -102,10 +97,6 @@ fun ProfileScreen(
             email = prof.email
             phone = prof.phone
             dob = prof.dob
-            pharmacyName = prof.pharmacyName
-            pharmacyContact = prof.pharmacyContact
-            doctorName = prof.doctorName
-            doctorContact = prof.doctorContact
 
             TimeSlot.entries.forEach { slot ->
                 prof.defaultTimes[slot.name]?.let { defaultTimes[slot.name] = it }
@@ -347,71 +338,6 @@ fun ProfileScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 3. Saved Pharmacy & Doctor Contacts Card
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Default Pharmacy & Prescriber Contacts",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        OutlinedTextField(
-                            value = pharmacyName,
-                            onValueChange = { pharmacyName = it },
-                            label = { Text("Preferred Pharmacy") },
-                            leadingIcon = { Icon(Icons.Default.LocalPharmacy, contentDescription = null, tint = TealPrimary) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        OutlinedTextField(
-                            value = pharmacyContact,
-                            onValueChange = { pharmacyContact = it },
-                            label = { Text("Pharmacy Phone") },
-                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = TealPrimary) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        OutlinedTextField(
-                            value = doctorName,
-                            onValueChange = { doctorName = it },
-                            label = { Text("Family Doctor") },
-                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = TealPrimary) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        OutlinedTextField(
-                            value = doctorContact,
-                            onValueChange = { doctorContact = it },
-                            label = { Text("Doctor Phone") },
-                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = TealPrimary) },
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Save Changes Button
@@ -421,11 +347,7 @@ fun ProfileScreen(
                             fullName = fullName,
                             dob = dob,
                             phone = phone,
-                            defaultTimes = defaultTimes.toMap(),
-                            pharmacyName = pharmacyName,
-                            pharmacyContact = pharmacyContact,
-                            doctorName = doctorName,
-                            doctorContact = doctorContact
+                            defaultTimes = defaultTimes.toMap()
                         )
                     },
                     modifier = Modifier

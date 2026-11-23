@@ -53,10 +53,10 @@ class ProfileViewModel(
         dob: String,
         phone: String,
         defaultTimes: Map<String, String>,
-        pharmacyName: String,
-        pharmacyContact: String,
-        doctorName: String,
-        doctorContact: String
+        pharmacyName: String = _uiState.value.profile?.pharmacyName ?: "",
+        pharmacyContact: String = _uiState.value.profile?.pharmacyContact ?: "",
+        doctorName: String = _uiState.value.profile?.doctorName ?: "",
+        doctorContact: String = _uiState.value.profile?.doctorContact ?: ""
     ) {
         val current = _uiState.value.profile ?: return
         if (fullName.isBlank()) {

@@ -9,6 +9,7 @@ import com.google.firebase.firestore.Query
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -59,28 +60,13 @@ class HistoryRepository(
     }
 
     /**
-     * Real-time stream of records for today.
+     * Real-time stream of records for today derived from user's history stream.
      */
-    fun getTodayRecordsStream(userId: String): Flow<List<DoseRecord>> = callbackFlow {
-        if (userId.isEmpty()) {
-            trySend(emptyList())
-            close()
-            return@callbackFlow
-        }
-
+    fun getTodayRecordsStream(userId: String): Flow<List<DoseRecord>> {
         val today = getTodayDateString()
-        val listener = getHistoryCollection(userId)
-            .whereEqualTo("date", today)
-            .addSnapshotListener { snapshot, error ->
-                if (error != null) {
-                    trySend(emptyList())
-                    return@addSnapshotListener
-                }
-                val list = snapshot?.documents?.mapNotNull { it.toObject(DoseRecord::class.java) } ?: emptyList()
-                trySend(list)
-            }
-
-        awaitClose { listener.remove() }
+        return getHistoryStream(userId).map { list ->
+            list.filter { it.date == today }
+        }
     }
 
     /**

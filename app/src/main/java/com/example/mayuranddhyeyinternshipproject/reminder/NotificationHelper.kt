@@ -147,6 +147,17 @@ class NotificationHelper(private val context: Context) {
         } catch (e: Exception) {
             // Safe fallback
         }
+
+        try {
+            com.example.mayuranddhyeyinternshipproject.data.repository.NotificationRepository(context).addNotification(
+                title = "Time for $medicineName",
+                message = "Please take your $medicineName ($dosage) scheduled for $slotName at $scheduledTime.",
+                medicineName = medicineName,
+                dosage = dosage,
+                slotName = slotName,
+                scheduledTime = scheduledTime
+            )
+        } catch (ignored: Exception) {}
     }
 
     companion object {

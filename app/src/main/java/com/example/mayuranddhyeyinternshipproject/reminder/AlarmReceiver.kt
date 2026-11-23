@@ -10,7 +10,8 @@ import android.content.Intent
 class AlarmReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val userId = intent.getStringExtra(NotificationHelper.EXTRA_USER_ID) ?: ""
+        val rawUserId = intent.getStringExtra(NotificationHelper.EXTRA_USER_ID) ?: ""
+        val userId = if (rawUserId.isNotBlank()) rawUserId else (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "")
         val medicineId = intent.getStringExtra(NotificationHelper.EXTRA_MEDICINE_ID) ?: return
         val medicineName = intent.getStringExtra(NotificationHelper.EXTRA_MEDICINE_NAME) ?: "Medicine"
         val dosage = intent.getStringExtra(NotificationHelper.EXTRA_DOSAGE) ?: "1 dose"

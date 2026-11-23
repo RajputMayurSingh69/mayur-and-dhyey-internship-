@@ -12,9 +12,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.mayuranddhyeyinternshipproject.data.repository.AuthRepository
+import com.example.mayuranddhyeyinternshipproject.ui.screens.auth.AuthTab
 import com.example.mayuranddhyeyinternshipproject.ui.screens.auth.AuthViewModel
 import com.example.mayuranddhyeyinternshipproject.ui.screens.auth.LoginScreen
-import com.example.mayuranddhyeyinternshipproject.ui.screens.auth.SignUpScreen
 import com.example.mayuranddhyeyinternshipproject.ui.screens.history.HistoryViewModel
 import com.example.mayuranddhyeyinternshipproject.ui.screens.history.MedicineHistoryScreen
 import com.example.mayuranddhyeyinternshipproject.ui.screens.home.HomeScreen
@@ -22,6 +22,7 @@ import com.example.mayuranddhyeyinternshipproject.ui.screens.home.HomeViewModel
 import com.example.mayuranddhyeyinternshipproject.ui.screens.medicine.MedicineDetailsScreen
 import com.example.mayuranddhyeyinternshipproject.ui.screens.medicine.MedicineListScreen
 import com.example.mayuranddhyeyinternshipproject.ui.screens.medicine.MedicineViewModel
+import com.example.mayuranddhyeyinternshipproject.ui.screens.notification.NotificationScreen
 import com.example.mayuranddhyeyinternshipproject.ui.screens.profile.ProfileScreen
 import com.example.mayuranddhyeyinternshipproject.ui.screens.profile.ProfileViewModel
 import com.example.mayuranddhyeyinternshipproject.ui.screens.settings.PrivacyPolicyScreen
@@ -71,9 +72,7 @@ fun MedMateNavGraph(
             val authViewModel: AuthViewModel = viewModel()
             LoginScreen(
                 authViewModel = authViewModel,
-                onNavigateToSignUp = {
-                    navController.navigate(Screen.SignUp.route)
-                },
+                initialTab = AuthTab.SIGN_IN,
                 onNavigateToHome = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
@@ -82,16 +81,12 @@ fun MedMateNavGraph(
             )
         }
 
-        // Sign Up Screen
+        // Sign Up Screen (opens unified auth screen with Create Account tab selected)
         composable(Screen.SignUp.route) {
             val authViewModel: AuthViewModel = viewModel()
-            SignUpScreen(
+            LoginScreen(
                 authViewModel = authViewModel,
-                onNavigateToLogin = {
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(Screen.SignUp.route) { inclusive = true }
-                    }
-                },
+                initialTab = AuthTab.CREATE_ACCOUNT,
                 onNavigateToHome = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.SignUp.route) { inclusive = true }
@@ -109,6 +104,7 @@ fun MedMateNavGraph(
                 onNavigateToHistory = { navController.navigate(Screen.History.route) },
                 onNavigateToMedicineList = { navController.navigate(Screen.MedicineList.route) },
                 onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
+                onNavigateToNotifications = { navController.navigate(Screen.Notification.route) },
                 onAddMedicine = {
                     navController.navigate(Screen.MedicineDetails.createRoute("new"))
                 },
@@ -124,7 +120,8 @@ fun MedMateNavGraph(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToHome = { navController.navigate(Screen.Home.route) },
                 onNavigateToMedicines = { navController.navigate(Screen.MedicineList.route) },
-                onNavigateToProfile = { navController.navigate(Screen.Profile.route) }
+                onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
+                onNavigateToNotifications = { navController.navigate(Screen.Notification.route) }
             )
         }
 
@@ -142,7 +139,8 @@ fun MedMateNavGraph(
                 },
                 onNavigateToHome = { navController.navigate(Screen.Home.route) },
                 onNavigateToHistory = { navController.navigate(Screen.History.route) },
-                onNavigateToProfile = { navController.navigate(Screen.Profile.route) }
+                onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
+                onNavigateToNotifications = { navController.navigate(Screen.Notification.route) }
             )
         }
 
@@ -191,6 +189,11 @@ fun MedMateNavGraph(
                     }
                 }
             )
+        }
+
+        // Notification Screen
+        composable(Screen.Notification.route) {
+            NotificationScreen(onNavigateBack = { navController.popBackStack() })
         }
 
         // Terms Screen

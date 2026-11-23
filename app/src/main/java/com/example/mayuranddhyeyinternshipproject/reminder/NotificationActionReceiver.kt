@@ -24,7 +24,8 @@ class NotificationActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         val notificationId = intent.getIntExtra(NotificationHelper.EXTRA_NOTIFICATION_ID, 0)
-        val userId = intent.getStringExtra(NotificationHelper.EXTRA_USER_ID) ?: ""
+        val rawUserId = intent.getStringExtra(NotificationHelper.EXTRA_USER_ID) ?: ""
+        val userId = if (rawUserId.isNotBlank()) rawUserId else (com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid ?: "")
         val medicineId = intent.getStringExtra(NotificationHelper.EXTRA_MEDICINE_ID) ?: ""
         val medicineName = intent.getStringExtra(NotificationHelper.EXTRA_MEDICINE_NAME) ?: ""
         val dosage = intent.getStringExtra(NotificationHelper.EXTRA_DOSAGE) ?: ""

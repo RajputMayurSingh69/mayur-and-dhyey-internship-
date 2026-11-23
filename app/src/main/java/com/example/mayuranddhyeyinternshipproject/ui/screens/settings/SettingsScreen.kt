@@ -1,6 +1,7 @@
 package com.example.mayuranddhyeyinternshipproject.ui.screens.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -131,50 +134,126 @@ fun SettingsScreen(
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        // Light Mode Option
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggleDarkMode(false) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (!isDarkMode) TealPrimary.copy(alpha = 0.1f) else Color.Transparent
+                        ) {
+                            Row(
                                 modifier = Modifier
-                                    .size(42.dp)
-                                    .background(MintAccent.copy(alpha = 0.25f), CircleShape),
-                                contentAlignment = Alignment.Center
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Icon(
-                                    imageVector = if (isDarkMode) Icons.Default.DarkMode else Icons.Default.LightMode,
-                                    contentDescription = null,
-                                    tint = TealPrimary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column {
-                                Text(
-                                    text = "Dark Mode",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = if (isDarkMode) "Dark theme enabled" else "Default light theme (recommended)",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(
+                                                if (!isDarkMode) TealPrimary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                                                CircleShape
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.LightMode,
+                                            contentDescription = null,
+                                            tint = if (!isDarkMode) TealPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = "Light Mode (Default)",
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontWeight = if (!isDarkMode) FontWeight.Bold else FontWeight.Medium
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Soft, eye-friendly light teal theme",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                RadioButton(
+                                    selected = !isDarkMode,
+                                    onClick = { onToggleDarkMode(false) },
+                                    colors = RadioButtonDefaults.colors(selectedColor = TealPrimary)
                                 )
                             }
                         }
 
-                        Switch(
-                            checked = isDarkMode,
-                            onCheckedChange = onToggleDarkMode,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = TealPrimary
-                            )
-                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Dark Mode Option
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggleDarkMode(true) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isDarkMode) TealPrimary.copy(alpha = 0.1f) else Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(
+                                                if (isDarkMode) TealPrimary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant,
+                                                CircleShape
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DarkMode,
+                                            contentDescription = null,
+                                            tint = if (isDarkMode) TealPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = "Dark Mode",
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                fontWeight = if (isDarkMode) FontWeight.Bold else FontWeight.Medium
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Comfortable viewing in low light",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                RadioButton(
+                                    selected = isDarkMode,
+                                    onClick = { onToggleDarkMode(true) },
+                                    colors = RadioButtonDefaults.colors(selectedColor = TealPrimary)
+                                )
+                            }
+                        }
                     }
                 }
 

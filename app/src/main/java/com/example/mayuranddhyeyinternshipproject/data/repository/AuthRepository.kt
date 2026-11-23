@@ -159,6 +159,38 @@ class AuthRepository(
         auth.signOut()
     }
 
+    /**
+     * Signs in using a Google AuthCredential and saves/retrieves user profile in Firestore.
+     */
+    suspend fun signInWithGoogleCredential(credential: com.google.firebase.auth.AuthCredential): Result<UserProfile> {
+        return try {
+            val authResult = auth.signInWithCredential(credential).await()
+            val user = authResult.user ?: return Result.failure(IllegalStateException("Google sign in failed."))
+
+            val docRef = firestore.collection("users").document(user.uid)
+            val doc = docRef.get().await()
+            val existing = doc.toObject(UserProfile::class.java)
+
+            val profile = if (existing != null) {
+                existing
+            } else {
+                val newProfile = UserProfile(
+                    uid = user.uid,
+                    fullName = user.displayName ?: "MedMate User",
+                    email = user.email ?: "",
+                    phone = user.phoneNumber ?: "",
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
+                docRef.set(newProfile).await()
+                newProfile
+            }
+            Result.success(profile)
+        } catch (e: Exception) {
+            Result.failure(IllegalStateException(mapAuthError(e)))
+        }
+    }
+
     private fun mapAuthError(e: Exception): String {
         val msg = e.localizedMessage ?: ""
         return when {
