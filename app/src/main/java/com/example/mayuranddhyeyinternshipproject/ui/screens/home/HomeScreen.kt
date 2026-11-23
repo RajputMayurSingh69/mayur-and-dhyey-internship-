@@ -59,6 +59,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -110,6 +112,17 @@ fun HomeScreen(
 ) {
     val uiState by homeViewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(homeViewModel) {
+        homeViewModel.eventFlow.collect { event ->
+            when (event) {
+                is HomeUiEvent.ShowSnackbar -> {
+                    snackbarHostState.showSnackbar(event.message)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         homeViewModel.loadData()
@@ -164,6 +177,7 @@ fun HomeScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             MedMateTopAppBar(
                 title = "Hello, ${uiState.userName} 👋",
@@ -512,6 +526,7 @@ fun SlotMedicineRow(
                 } else {
                     Button(
                         onClick = onMarkAsTaken,
+                        enabled = !item.isPendingWrite,
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)

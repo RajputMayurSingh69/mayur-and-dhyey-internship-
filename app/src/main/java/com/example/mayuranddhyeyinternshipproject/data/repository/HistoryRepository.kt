@@ -60,16 +60,6 @@ class HistoryRepository(
     }
 
     /**
-     * Real-time stream of records for today derived from user's history stream.
-     */
-    fun getTodayRecordsStream(userId: String): Flow<List<DoseRecord>> {
-        val today = getTodayDateString()
-        return getHistoryStream(userId).map { list ->
-            list.filter { it.date == today }
-        }
-    }
-
-    /**
      * Determines dose status according to the app rules:
      * - On time: within ±15 minutes of scheduled time
      * - Slightly late: 15–60 minutes late
