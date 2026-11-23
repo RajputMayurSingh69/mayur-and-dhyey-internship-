@@ -67,6 +67,7 @@ import com.example.mayuranddhyeyinternshipproject.ui.theme.TealPrimary
 fun ProfileScreen(
     profileViewModel: ProfileViewModel,
     onNavigateBack: () -> Unit,
+    onNavigateToSettings: () -> Unit = {},
     onNavigateToHome: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToMedicines: () -> Unit
@@ -137,7 +138,9 @@ fun ProfileScreen(
                 title = "Profile & Preferences",
                 subtitle = "Manage personal info & app reminder times",
                 canNavigateBack = true,
-                onNavigateBack = onNavigateBack
+                onNavigateBack = onNavigateBack,
+                showSettings = true,
+                onSettingsClick = onNavigateToSettings
             )
         },
         bottomBar = {

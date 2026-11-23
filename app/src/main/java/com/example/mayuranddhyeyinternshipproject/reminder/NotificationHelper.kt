@@ -1,10 +1,12 @@
 package com.example.mayuranddhyeyinternshipproject.reminder
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -14,7 +16,7 @@ import com.example.mayuranddhyeyinternshipproject.R
 
 /**
  * Handles creation of Notification Channels and building reminder notifications
- * with "Taken" and "Snooze" interactive action buttons.
+ * with audible ringtone, vibration, Heads-Up pop-up alert, and interactive action buttons.
  */
 class NotificationHelper(private val context: Context) {
 
@@ -27,11 +29,25 @@ class NotificationHelper(private val context: Context) {
             val name = context.getString(R.string.notification_channel_name)
             val descriptionText = context.getString(R.string.notification_channel_desc)
             val importance = NotificationManager.IMPORTANCE_HIGH
+
+            val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+            val audioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .build()
+
             val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
                 description = descriptionText
+                setSound(soundUri, audioAttributes)
                 enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 250, 500, 250, 500)
                 enableLights(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setBypassDnd(true)
             }
+
             val notificationManager: NotificationManager? =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
             notificationManager?.createNotificationChannel(channel)
@@ -101,21 +117,25 @@ class NotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+        val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("MedMate: Time for $medicineName")
+            .setContentTitle("💊 MedMate: Time for $medicineName")
             .setContentText("Dose: $dosage ($slotName)")
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .bigText("Please take your $medicineName ($dosage) scheduled for $slotName at $scheduledTime.\nTaking medicines on time keeps you healthy!")
             )
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setSound(soundUri)
+            .setVibrate(longArrayOf(0, 500, 250, 500, 250, 500))
+            .setDefaults(NotificationCompat.DEFAULT_LIGHTS)
             .setAutoCancel(true)
+            .setFullScreenIntent(contentPendingIntent, true) // Heads-Up pop-up banner on screen!
             .setContentIntent(contentPendingIntent)
             .addAction(android.R.drawable.ic_menu_agenda, context.getString(R.string.action_taken), takenPendingIntent)
             .addAction(android.R.drawable.ic_popup_sync, context.getString(R.string.action_snooze), snoozePendingIntent)
@@ -130,7 +150,7 @@ class NotificationHelper(private val context: Context) {
     }
 
     companion object {
-        const val CHANNEL_ID = "medmate_reminders"
+        const val CHANNEL_ID = "medmate_alarms_v3"
         const val ACTION_MARK_TAKEN = "com.example.mayuranddhyeyinternshipproject.ACTION_MARK_TAKEN"
         const val ACTION_SNOOZE = "com.example.mayuranddhyeyinternshipproject.ACTION_SNOOZE"
 

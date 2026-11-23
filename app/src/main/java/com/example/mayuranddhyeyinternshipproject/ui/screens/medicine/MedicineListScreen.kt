@@ -110,7 +110,8 @@ fun MedicineListScreen(
                 title = "Your Medicines",
                 subtitle = "Manage dosage, forms & reminder slots",
                 canNavigateBack = true,
-                onNavigateBack = onNavigateBack
+                onNavigateBack = onNavigateBack,
+                showNotificationIcon = true
             )
         },
         floatingActionButton = {

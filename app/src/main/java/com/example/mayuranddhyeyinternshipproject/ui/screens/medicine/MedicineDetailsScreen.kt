@@ -11,6 +11,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -385,17 +386,26 @@ fun MedicineDetailsScreen(
                             Text(
                                 text = "Medical Facility & Doctor",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.weight(1f)
                             )
-                            Button(
+                            Spacer(modifier = Modifier.width(8.dp))
+                            OutlinedButton(
                                 onClick = { showPharmacyPicker = !showPharmacyPicker },
-                                colors = ButtonDefaults.buttonColors(containerColor = TealPrimary.copy(alpha = 0.15f)),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                             ) {
+                                Icon(
+                                    Icons.Default.LocalPharmacy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = TealPrimary
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    if (showPharmacyPicker) "Hide Nearby" else "Nearby Pharmacies",
+                                    if (showPharmacyPicker) "Hide" else "Pharmacies",
                                     color = TealPrimary,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
                                 )
                             }
                         }

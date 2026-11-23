@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -71,6 +72,8 @@ fun MedMateTopAppBar(
     onNavigateBack: () -> Unit = {},
     showSettings: Boolean = false,
     onSettingsClick: () -> Unit = {},
+    showNotificationIcon: Boolean = false,
+    onNotificationClick: () -> Unit = {},
     subtitle: String? = null
 ) {
     TopAppBar(
@@ -105,6 +108,15 @@ fun MedMateTopAppBar(
             }
         },
         actions = {
+            if (showNotificationIcon) {
+                IconButton(onClick = onNotificationClick) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = "Notifications",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
             if (showSettings) {
                 IconButton(onClick = onSettingsClick) {
                     Icon(

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,6 +18,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -30,7 +32,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
@@ -129,7 +132,13 @@ fun HomeScreen(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        homeViewModel.rescheduleAllAlarms(context)
+    }
+
+    // Automatically schedule alarms whenever medicines list is loaded or updated
+    LaunchedEffect(uiState.medicines) {
+        if (uiState.medicines.isNotEmpty()) {
+            homeViewModel.rescheduleAllAlarms(context)
+        }
     }
 
     if (showExitDialog) {
@@ -154,8 +163,11 @@ fun HomeScreen(
             MedMateTopAppBar(
                 title = "Hello, ${uiState.userName} 👋",
                 subtitle = "Stay consistent with your medicines",
-                showSettings = true,
-                onSettingsClick = onNavigateToSettings
+                showSettings = false,
+                showNotificationIcon = true,
+                onNotificationClick = {
+                    Toast.makeText(context, "Medicine reminder notifications are active", Toast.LENGTH_SHORT).show()
+                }
             )
         },
         bottomBar = {
@@ -182,7 +194,8 @@ fun HomeScreen(
                 TodaySummaryCard(
                     totalDoses = uiState.totalDosesToday,
                     takenDoses = uiState.takenDosesToday,
-                    onAddMedicineClick = onAddMedicine
+                    onAddMedicineClick = onAddMedicine,
+                    context = context
                 )
             }
 
@@ -284,7 +297,8 @@ fun HomeScreen(
 fun TodaySummaryCard(
     totalDoses: Int,
     takenDoses: Int,
-    onAddMedicineClick: () -> Unit
+    onAddMedicineClick: () -> Unit,
+    context: android.content.Context
 ) {
     val progress = if (totalDoses > 0) (takenDoses.toFloat() / totalDoses.toFloat()).coerceIn(0f, 1f) else 0f
     val percent = (progress * 100).toInt()
@@ -361,6 +375,26 @@ fun TodaySummaryCard(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        val scheduler = com.example.mayuranddhyeyinternshipproject.reminder.ReminderScheduler(context)
+                        scheduler.scheduleTestAlarm("Paracetamol", "500 mg", 5)
+                        Toast.makeText(context, "Test alarm set! Ringing in 5 seconds with sound and popup.", Toast.LENGTH_LONG).show()
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Test Alarm (5s)", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                }
+            }
         }
     }
 }
@@ -395,7 +429,7 @@ fun SlotCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.AccessTime,
+                            imageVector = Icons.Default.Alarm,
                             contentDescription = null,
                             tint = TealPrimary,
                             modifier = Modifier.size(20.dp)
@@ -441,62 +475,73 @@ fun SlotMedicineRow(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp)
+            ) {
                 Text(
                     text = item.medicine.name,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "${item.medicine.dosage} • ${item.scheduledTime}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    DoseStatusChip(status = item.status)
-                }
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "${item.medicine.dosage} • ${item.scheduledTime}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                DoseStatusChip(status = item.status)
 
-            if (item.isTaken) {
-                Surface(
-                    shape = CircleShape,
-                    color = StatusSuccessBg,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Taken",
-                            tint = StatusSuccess,
-                            modifier = Modifier.size(20.dp)
+                if (item.isTaken) {
+                    Surface(
+                        shape = CircleShape,
+                        color = StatusSuccessBg,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Taken",
+                                tint = StatusSuccess,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = onMarkAsTaken,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = TealPrimary),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.mark_as_taken),
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
-                }
-            } else {
-                Button(
-                    onClick = onMarkAsTaken,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = TealPrimary)
-                ) {
-                    Text(
-                        text = stringResource(R.string.mark_as_taken),
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                    )
                 }
             }
         }
@@ -504,7 +549,7 @@ fun SlotMedicineRow(
 }
 
 /**
- * Pill status chip showing Taken / Pending / Late.
+ * Pill status chip showing Taken / Pending / Late (Locked horizontally, never wraps vertically).
  */
 @Composable
 fun DoseStatusChip(status: DoseStatus) {
@@ -522,9 +567,11 @@ fun DoseStatusChip(status: DoseStatus) {
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
             color = textColor,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
         )
     }
 }

@@ -74,7 +74,8 @@ fun MedicineHistoryScreen(
                 title = "Medicine History",
                 subtitle = "Past doses and intake compliance",
                 canNavigateBack = true,
-                onNavigateBack = onNavigateBack
+                onNavigateBack = onNavigateBack,
+                showNotificationIcon = true
             )
         },
         bottomBar = {

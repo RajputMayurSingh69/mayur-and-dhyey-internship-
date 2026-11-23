@@ -11,6 +11,7 @@ import java.util.Calendar
 
 /**
  * Manages scheduling and cancelling exact alarms using Android AlarmManager.
+ * Uses AlarmClockInfo for 100% exact delivery, Doze mode bypass, and status bar alarm indication.
  */
 class ReminderScheduler(private val context: Context) {
 
@@ -29,7 +30,7 @@ class ReminderScheduler(private val context: Context) {
     }
 
     /**
-     * Schedules a single exact alarm for a specific medicine slot.
+     * Schedules an exact alarm for a specific medicine slot using setAlarmClock for maximum precision.
      */
     fun scheduleExactSlotAlarm(medicine: Medicine, slot: TimeSlot, timeStr: String) {
         if (alarmManager == null) return
@@ -38,14 +39,19 @@ class ReminderScheduler(private val context: Context) {
         val hour = parts[0].toIntOrNull() ?: slot.defaultHour
         val minute = parts[1].toIntOrNull() ?: slot.defaultMinute
 
+        val now = Calendar.getInstance()
         val targetCal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, hour)
             set(Calendar.MINUTE, minute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
-            // If time has already passed today, schedule for tomorrow
-            if (before(Calendar.getInstance())) {
+
+            // If time has already passed today by more than 1 minute, schedule for tomorrow
+            if (timeInMillis < (now.timeInMillis - 60_000)) {
                 add(Calendar.DAY_OF_YEAR, 1)
+            } else if (timeInMillis <= now.timeInMillis) {
+                // If it's the current minute or just seconds ago, trigger 5 seconds from now
+                timeInMillis = now.timeInMillis + 5_000
             }
         }
 
@@ -67,37 +73,34 @@ class ReminderScheduler(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (alarmManager.canScheduleExactAlarms()) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        targetCal.timeInMillis,
-                        pendingIntent
-                    )
-                } else {
-                    alarmManager.setAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        targetCal.timeInMillis,
-                        pendingIntent
-                    )
-                }
-            } else {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.RTC_WAKEUP,
-                    targetCal.timeInMillis,
-                    pendingIntent
-                )
-            }
-        } catch (e: SecurityException) {
-            try {
-                alarmManager.set(
-                    AlarmManager.RTC_WAKEUP,
-                    targetCal.timeInMillis,
-                    pendingIntent
-                )
-            } catch (ignored: Exception) {}
-        } catch (ignored: Exception) {}
+        scheduleExactWithFallback(targetCal.timeInMillis, pendingIntent)
+    }
+
+    /**
+     * Schedules an immediate test alarm to ring in `seconds` seconds with sound and notification.
+     */
+    fun scheduleTestAlarm(medicineName: String = "Paracetamol", dosage: String = "500 mg", seconds: Int = 5) {
+        if (alarmManager == null) return
+        val triggerAtMillis = System.currentTimeMillis() + (seconds * 1000)
+
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            action = ACTION_REMINDER
+            putExtra(NotificationHelper.EXTRA_USER_ID, "test_user")
+            putExtra(NotificationHelper.EXTRA_MEDICINE_ID, "test_${System.currentTimeMillis()}")
+            putExtra(NotificationHelper.EXTRA_MEDICINE_NAME, medicineName)
+            putExtra(NotificationHelper.EXTRA_DOSAGE, dosage)
+            putExtra(NotificationHelper.EXTRA_SLOT_NAME, "Test Alarm")
+            putExtra(NotificationHelper.EXTRA_SCHEDULED_TIME, "Just Now")
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            999999,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        scheduleExactWithFallback(triggerAtMillis, pendingIntent)
     }
 
     /**
@@ -134,20 +137,31 @@ class ReminderScheduler(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        scheduleExactWithFallback(triggerAtMillis, pendingIntent)
+    }
+
+    private fun scheduleExactWithFallback(triggerAtMillis: Long, pendingIntent: PendingIntent) {
+        val am = alarmManager ?: return
         try {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerAtMillis,
-                pendingIntent
-            )
+            // Primary: setAlarmClock guarantees exact wakeup, sound, and status bar alarm display
+            val clockInfo = AlarmManager.AlarmClockInfo(triggerAtMillis, pendingIntent)
+            am.setAlarmClock(clockInfo, pendingIntent)
         } catch (e: Exception) {
             try {
-                alarmManager.set(
-                    AlarmManager.RTC_WAKEUP,
-                    triggerAtMillis,
-                    pendingIntent
-                )
-            } catch (ignored: Exception) {}
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (am.canScheduleExactAlarms()) {
+                        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                    } else {
+                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                    }
+                } else {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                }
+            } catch (fallbackEx: Exception) {
+                try {
+                    am.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+                } catch (ignored: Exception) {}
+            }
         }
     }
 

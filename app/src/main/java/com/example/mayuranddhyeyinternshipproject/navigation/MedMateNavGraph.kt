@@ -166,6 +166,7 @@ fun MedMateNavGraph(
             ProfileScreen(
                 profileViewModel = profileViewModel,
                 onNavigateBack = { navController.popBackStack() },
+                onNavigateToSettings = { navController.navigate(Screen.Settings.route) },
                 onNavigateToHome = { navController.navigate(Screen.Home.route) },
                 onNavigateToHistory = { navController.navigate(Screen.History.route) },
                 onNavigateToMedicines = { navController.navigate(Screen.MedicineList.route) }
