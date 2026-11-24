@@ -12,7 +12,20 @@
           "package_name": "com.example.mayuranddhyeyinternshipproject"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "93847664545-qn53aic5o224cfo0ot3fq0k4ifbnucnv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.mayuranddhyeyinternshipproject",
+            "certificate_hash": "75948fb0a567664bde469223a9f9e706a7de6086"
+          }
+        },
+        {
+          "client_id": "93847664545-d6vj2485tfiiio2g8dqbapqatt09im73.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyC93_osD3pXwIaDX5h1F3mt7GCQmHo9WB8"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "93847664545-d6vj2485tfiiio2g8dqbapqatt09im73.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
