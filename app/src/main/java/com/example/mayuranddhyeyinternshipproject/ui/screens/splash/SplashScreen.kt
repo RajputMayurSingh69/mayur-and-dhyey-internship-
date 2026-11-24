@@ -53,13 +53,19 @@ import kotlinx.coroutines.delay
 @Composable
 fun SplashScreen(
     isUserLoggedIn: Boolean,
+    isEmailVerified: Boolean = false,
     onNavigateToHome: () -> Unit,
+    onNavigateToVerifyEmail: () -> Unit = {},
     onNavigateToLogin: () -> Unit
 ) {
     LaunchedEffect(Unit) {
         delay(2500)
         if (isUserLoggedIn) {
-            onNavigateToHome()
+            if (isEmailVerified) {
+                onNavigateToHome()
+            } else {
+                onNavigateToVerifyEmail()
+            }
         } else {
             onNavigateToLogin()
         }

@@ -1,21 +1,39 @@
 package com.example.mayuranddhyeyinternshipproject.ui.screens.auth
 
+import android.app.Activity
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mayuranddhyeyinternshipproject.data.model.UserProfile
 import com.example.mayuranddhyeyinternshipproject.data.repository.AuthRepository
 import com.example.mayuranddhyeyinternshipproject.data.repository.SecurityPreferences
+import com.google.firebase.auth.PhoneAuthCredential
+import com.google.firebase.auth.PhoneAuthProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+data class PendingSignUpData(
+    val fullName: String,
+    val dob: String,
+    val phone: String,
+    val email: String
+)
+
 data class AuthUiState(
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val infoMessage: String? = null,
     val isSuccess: Boolean = false,
+    val isEmailVerificationPending: Boolean = false,
+    val isOtpPending: Boolean = false,
+    val verificationId: String? = null,
+    val resendToken: PhoneAuthProvider.ForceResendingToken? = null,
+    val pendingSignUpData: PendingSignUpData? = null,
+    val forgotPasswordMessage: String? = null,
+    val isForgotPasswordLoading: Boolean = false,
     val userProfile: UserProfile? = null,
     val switchToTab: AuthTab? = null,
     val prefillEmail: String? = null,
@@ -32,12 +50,13 @@ class AuthViewModel(
 
     fun isUserLoggedIn(): Boolean = authRepository.isUserLoggedIn()
 
+    fun isEmailVerified(): Boolean = authRepository.isEmailVerified()
+
     fun getCurrentUserId(): String? = authRepository.getCurrentUserId()
 
     /**
      * Signs in with email and password.
-     * If user is not found, switches to Create Account tab and pre-fills email.
-     * If profile in Firestore is missing, guides user to complete registration.
+     * If user is unverified, marks isEmailVerificationPending = true.
      */
     fun signIn(email: String, pass: String) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
@@ -47,14 +66,28 @@ class AuthViewModel(
                 onSuccess = { profile ->
                     securityPreferences?.cachedUserId = profile.uid
                     securityPreferences?.cachedUserName = profile.fullName
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            isSuccess = true,
-                            userProfile = profile,
-                            errorMessage = null,
-                            infoMessage = null
-                        )
+
+                    if (authRepository.isEmailVerified()) {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                isSuccess = true,
+                                userProfile = profile,
+                                errorMessage = null,
+                                infoMessage = null
+                            )
+                        }
+                    } else {
+                        // User signed in but email is not verified yet
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                isEmailVerificationPending = true,
+                                userProfile = profile,
+                                errorMessage = null,
+                                infoMessage = null
+                            )
+                        }
                     }
                 },
                 onFailure = { error ->
@@ -105,10 +138,68 @@ class AuthViewModel(
     }
 
     /**
-     * Creates a new user with full profile (Name, DOB, Phone, Email, Password).
-     * If email already exists, switches to Sign In tab and pre-fills email.
+     * Backward-compatible sign-up method for legacy callers.
      */
     fun signUp(
+        fullName: String,
+        dob: String,
+        phone: String,
+        email: String,
+        pass: String,
+        activity: Activity? = null
+    ) {
+        if (activity != null) {
+            startSignUpWithPhoneOtp(activity, fullName, dob, phone, email, pass)
+        } else {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            viewModelScope.launch {
+                val createResult = authRepository.createAuthUser(email, pass)
+                createResult.fold(
+                    onSuccess = {
+                        val profileResult = authRepository.completeSignUp(fullName, dob, phone, email)
+                        profileResult.fold(
+                            onSuccess = {
+                                authRepository.sendEmailVerification()
+                                _uiState.update {
+                                    it.copy(
+                                        isLoading = false,
+                                        isSuccess = true,
+                                        isEmailVerificationPending = true
+                                    )
+                                }
+                            },
+                            onFailure = { err ->
+                                authRepository.cleanupPendingUser()
+                                _uiState.update {
+                                    it.copy(
+                                        isLoading = false,
+                                        errorMessage = err.localizedMessage ?: "Registration failed."
+                                    )
+                                }
+                            }
+                        )
+                    },
+                    onFailure = { err ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = err.localizedMessage ?: "Failed to create account."
+                            )
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * Phase 2A Sign-Up with Phone OTP:
+     * 1. Validates inputs and creates the Auth user with email/password.
+     * 2. Sends 6-digit OTP to user's phone number via PhoneAuthProvider.
+     * 3. Sets isOtpPending = true to show OTP dialog.
+     */
+    fun startSignUpWithPhoneOtp(
+        activity: Activity,
         fullName: String,
         dob: String,
         phone: String,
@@ -117,26 +208,45 @@ class AuthViewModel(
     ) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
         viewModelScope.launch {
-            val result = authRepository.signUp(
-                fullName = fullName,
-                dob = dob,
-                phone = phone,
-                email = email,
-                password = pass
-            )
-            result.fold(
-                onSuccess = { profile ->
-                    securityPreferences?.cachedUserId = profile.uid
-                    securityPreferences?.cachedUserName = profile.fullName
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            isSuccess = true,
-                            userProfile = profile,
-                            errorMessage = null,
-                            infoMessage = null
-                        )
-                    }
+            val createResult = authRepository.createAuthUser(email, pass)
+            createResult.fold(
+                onSuccess = {
+                    val pendingData = PendingSignUpData(
+                        fullName = fullName,
+                        dob = dob,
+                        phone = phone,
+                        email = email
+                    )
+                    authRepository.sendPhoneOtp(
+                        activity = activity,
+                        phone = phone,
+                        onCodeSent = { verificationId, token ->
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    isOtpPending = true,
+                                    verificationId = verificationId,
+                                    resendToken = token,
+                                    pendingSignUpData = pendingData
+                                )
+                            }
+                        },
+                        onVerificationCompleted = { credential ->
+                            // Auto-verification on supported devices
+                            completeRegistrationWithCredential(credential, pendingData)
+                        },
+                        onVerificationFailed = { ex ->
+                            viewModelScope.launch {
+                                authRepository.cleanupPendingUser()
+                            }
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    errorMessage = ex.localizedMessage ?: "Phone verification failed. Please try again."
+                                )
+                            }
+                        }
+                    )
                 },
                 onFailure = { error ->
                     val msg = error.localizedMessage ?: "Sign up failed"
@@ -163,9 +273,200 @@ class AuthViewModel(
     }
 
     /**
-     * Signs in with Google credential on the Sign In tab.
-     * Verifies that the user already has a complete profile in Firestore.
-     * If user does NOT have a profile, switches to Create Account tab and pre-fills Name and Email.
+     * Submits the 6-digit OTP code entered by the user.
+     */
+    fun submitPhoneOtp(code: String) {
+        val verificationId = _uiState.value.verificationId ?: return
+        val pendingData = _uiState.value.pendingSignUpData ?: return
+
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        val credential = PhoneAuthProvider.getCredential(verificationId, code)
+        completeRegistrationWithCredential(credential, pendingData)
+    }
+
+    private fun completeRegistrationWithCredential(
+        credential: PhoneAuthCredential,
+        pendingData: PendingSignUpData
+    ) {
+        viewModelScope.launch {
+            val result = authRepository.linkPhoneAndCompleteSignUp(
+                credential = credential,
+                fullName = pendingData.fullName,
+                dob = pendingData.dob,
+                phone = pendingData.phone,
+                email = pendingData.email
+            )
+            result.fold(
+                onSuccess = { profile ->
+                    securityPreferences?.cachedUserId = profile.uid
+                    securityPreferences?.cachedUserName = profile.fullName
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isOtpPending = false,
+                            isEmailVerificationPending = true,
+                            userProfile = profile,
+                            errorMessage = null
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isOtpPending = false,
+                            errorMessage = error.localizedMessage ?: "Registration failed. Please try again."
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    /**
+     * Resends the phone OTP using the force resending token.
+     */
+    fun resendPhoneOtp(activity: Activity) {
+        val pendingData = _uiState.value.pendingSignUpData ?: return
+        val token = _uiState.value.resendToken
+
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        authRepository.sendPhoneOtp(
+            activity = activity,
+            phone = pendingData.phone,
+            token = token,
+            onCodeSent = { verificationId, newToken ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        verificationId = verificationId,
+                        resendToken = newToken,
+                        infoMessage = "Verification code resent successfully."
+                    )
+                }
+            },
+            onVerificationCompleted = { credential ->
+                completeRegistrationWithCredential(credential, pendingData)
+            },
+            onVerificationFailed = { ex ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = ex.localizedMessage ?: "Failed to resend code."
+                    )
+                }
+            }
+        )
+    }
+
+    /**
+     * Cancels pending phone OTP and deletes the half-made Auth user.
+     */
+    fun cancelPhoneOtp() {
+        viewModelScope.launch {
+            authRepository.cleanupPendingUser()
+        }
+        _uiState.update {
+            it.copy(
+                isOtpPending = false,
+                verificationId = null,
+                resendToken = null,
+                pendingSignUpData = null,
+                isLoading = false
+            )
+        }
+    }
+
+    /**
+     * Checks if current user has verified their email via user.reload().
+     */
+    fun checkEmailVerification() {
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        viewModelScope.launch {
+            val isVerified = authRepository.reloadUser()
+            if (isVerified) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isEmailVerificationPending = false,
+                        isSuccess = true,
+                        errorMessage = null
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = "Email not verified yet. Please click the link sent to your inbox, then tap 'I have verified'."
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Resends email verification.
+     */
+    fun resendVerificationEmail() {
+        _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+        viewModelScope.launch {
+            val result = authRepository.sendEmailVerification()
+            result.fold(
+                onSuccess = {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            infoMessage = "Verification email sent. Please check your inbox and spam folder."
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = error.localizedMessage ?: "Failed to send email."
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    /**
+     * Phase 2C: Sends password reset email.
+     * Always shows uniform message to avoid revealing which emails exist.
+     */
+    fun sendPasswordResetEmail(email: String) {
+        _uiState.update { it.copy(isForgotPasswordLoading = true, errorMessage = null) }
+        viewModelScope.launch {
+            val result = authRepository.sendPasswordResetEmail(email)
+            result.fold(
+                onSuccess = { message ->
+                    _uiState.update {
+                        it.copy(
+                            isForgotPasswordLoading = false,
+                            forgotPasswordMessage = message
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _uiState.update {
+                        it.copy(
+                            isForgotPasswordLoading = false,
+                            errorMessage = error.localizedMessage
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    fun clearForgotPasswordMessage() {
+        _uiState.update { it.copy(forgotPasswordMessage = null) }
+    }
+
+    /**
+     * Signs in with Google credential.
      */
     fun signInWithGoogle(
         credential: com.google.firebase.auth.AuthCredential,
@@ -217,12 +518,6 @@ class AuthViewModel(
         }
     }
 
-    /**
-     * Called when user taps "Continue with Google" while on the Create Account tab.
-     * Checks if the Google email is already registered in Firebase.
-     * If already registered: prompts user and switches to Sign In tab.
-     * If NOT registered: pre-fills Name and Email into Create Account form, and prompts for DOB, Phone, Password.
-     */
     fun handleGoogleInCreateAccount(email: String, name: String) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
         viewModelScope.launch {
@@ -247,6 +542,11 @@ class AuthViewModel(
                 }
             }
         }
+    }
+
+    fun signOut(context: Context? = null) {
+        authRepository.signOut(context)
+        _uiState.value = AuthUiState()
     }
 
     fun clearTabSwitch() {

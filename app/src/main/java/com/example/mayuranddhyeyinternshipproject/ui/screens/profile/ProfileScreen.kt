@@ -1,5 +1,6 @@
 package com.example.mayuranddhyeyinternshipproject.ui.screens.profile
 
+import android.app.Activity
 import android.app.TimePickerDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
@@ -28,6 +30,7 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.LocalPharmacy
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,6 +40,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,6 +54,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.mayuranddhyeyinternshipproject.data.model.TimeSlot
 import com.example.mayuranddhyeyinternshipproject.ui.components.LoadingOverlay
@@ -90,6 +96,7 @@ fun ProfileScreen(
     }
 
     var showSuccessToast by remember { mutableStateOf(false) }
+    var enteredPhoneOtp by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(uiState.profile) {
         uiState.profile?.let { prof ->
@@ -344,6 +351,7 @@ fun ProfileScreen(
                 Button(
                     onClick = {
                         profileViewModel.updateProfile(
+                            activity = context as? Activity,
                             fullName = fullName,
                             dob = dob,
                             phone = phone,
@@ -363,6 +371,68 @@ fun ProfileScreen(
                 }
 
                 Spacer(modifier = Modifier.height(36.dp))
+            }
+
+            // Phone Change OTP Verification Dialog (Phase 2A / 1E)
+            if (uiState.isPhoneOtpPending) {
+                AlertDialog(
+                    onDismissRequest = {
+                        profileViewModel.cancelPhoneOtp()
+                        enteredPhoneOtp = ""
+                    },
+                    title = {
+                        Text("Verify New Phone Number", fontWeight = FontWeight.Bold)
+                    },
+                    text = {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Enter the 6-digit verification code sent to your new phone number to confirm the update.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            OutlinedTextField(
+                                value = enteredPhoneOtp,
+                                onValueChange = {
+                                    if (it.length <= 6 && it.all { c -> c.isDigit() }) {
+                                        enteredPhoneOtp = it
+                                    }
+                                },
+                                label = { Text("6-Digit OTP Code") },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.NumberPassword,
+                                    imeAction = ImeAction.Done
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (enteredPhoneOtp.length == 6) {
+                                    profileViewModel.submitPhoneChangeOtp(enteredPhoneOtp)
+                                }
+                            },
+                            enabled = enteredPhoneOtp.length == 6 && !uiState.isSaving,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text("Confirm & Update")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                profileViewModel.cancelPhoneOtp()
+                                enteredPhoneOtp = ""
+                            }
+                        ) {
+                            Text("Cancel")
+                        }
+                    }
+                )
             }
 
             LoadingOverlay(isLoading = uiState.isSaving)

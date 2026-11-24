@@ -41,6 +41,7 @@ fun MedMateNavGraph(
 ) {
     val authRepository = AuthRepository()
     val isUserLoggedIn = authRepository.isUserLoggedIn()
+    val isEmailVerified = authRepository.isEmailVerified()
 
     NavHost(
         navController = navController,
@@ -54,8 +55,14 @@ fun MedMateNavGraph(
         composable(Screen.Splash.route) {
             SplashScreen(
                 isUserLoggedIn = isUserLoggedIn,
+                isEmailVerified = isEmailVerified,
                 onNavigateToHome = {
                     navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Splash.route) { inclusive = true }
+                    }
+                },
+                onNavigateToVerifyEmail = {
+                    navController.navigate(Screen.VerifyEmail.route) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
                 },
@@ -73,6 +80,11 @@ fun MedMateNavGraph(
             LoginScreen(
                 authViewModel = authViewModel,
                 initialTab = AuthTab.SIGN_IN,
+                onNavigateToVerifyEmail = {
+                    navController.navigate(Screen.VerifyEmail.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                },
                 onNavigateToHome = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
@@ -87,9 +99,33 @@ fun MedMateNavGraph(
             LoginScreen(
                 authViewModel = authViewModel,
                 initialTab = AuthTab.CREATE_ACCOUNT,
+                onNavigateToVerifyEmail = {
+                    navController.navigate(Screen.VerifyEmail.route) {
+                        popUpTo(Screen.SignUp.route) { inclusive = true }
+                    }
+                },
                 onNavigateToHome = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.SignUp.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // Verify Email Screen (Phase 2B)
+        composable(Screen.VerifyEmail.route) {
+            val authViewModel: AuthViewModel = viewModel()
+            com.example.mayuranddhyeyinternshipproject.ui.screens.auth.VerifyEmailScreen(
+                authViewModel = authViewModel,
+                onVerified = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.VerifyEmail.route) { inclusive = true }
+                    }
+                },
+                onSignOut = {
+                    authRepository.signOut()
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )

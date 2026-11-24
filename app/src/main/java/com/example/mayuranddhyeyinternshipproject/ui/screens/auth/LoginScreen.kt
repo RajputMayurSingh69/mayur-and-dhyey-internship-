@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -58,6 +59,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -87,6 +89,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -102,11 +105,13 @@ fun LoginScreen(
     authViewModel: AuthViewModel,
     initialTab: AuthTab = AuthTab.SIGN_IN,
     onNavigateToSignUp: () -> Unit = {},
+    onNavigateToVerifyEmail: () -> Unit = {},
     onNavigateToHome: () -> Unit
 ) {
     val uiState by authViewModel.uiState.collectAsState()
     val focusManager = LocalFocusManager.current
     val context = LocalContext.current
+    val activity = context as? Activity
 
     var selectedTab by rememberSaveable { mutableStateOf(initialTab) }
 
@@ -114,6 +119,14 @@ fun LoginScreen(
     var signInEmail by rememberSaveable { mutableStateOf("") }
     var signInPassword by rememberSaveable { mutableStateOf("") }
     var signInPasswordVisible by rememberSaveable { mutableStateOf(false) }
+
+    // Forgot Password Dialog State (Phase 2C)
+    var showForgotPasswordDialog by rememberSaveable { mutableStateOf(false) }
+    var forgotEmail by rememberSaveable { mutableStateOf("") }
+
+    // Phone OTP Dialog State (Phase 2A)
+    var enteredOtpCode by rememberSaveable { mutableStateOf("") }
+    var otpResendCooldown by remember { mutableIntStateOf(60) }
 
     // Sign Up Fields
     var signUpFullName by rememberSaveable { mutableStateOf("") }
@@ -132,6 +145,14 @@ fun LoginScreen(
     var phoneError by rememberSaveable { mutableStateOf<String?>(null) }
     var emailError by rememberSaveable { mutableStateOf<String?>(null) }
     var passwordError by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // OTP Resend Cooldown Countdown
+    LaunchedEffect(uiState.isOtpPending, otpResendCooldown) {
+        if (uiState.isOtpPending && otpResendCooldown > 0) {
+            delay(1000L)
+            otpResendCooldown -= 1
+        }
+    }
 
     // Automatic tab switching and field pre-filling based on ViewModel state
     LaunchedEffect(uiState.switchToTab, uiState.prefillEmail, uiState.prefillName) {
@@ -155,6 +176,20 @@ fun LoginScreen(
         }
     }
 
+    // Navigation on Success or Email Verification Required (Phase 2B)
+    LaunchedEffect(uiState.isSuccess, uiState.isEmailVerificationPending) {
+        if (uiState.isEmailVerificationPending) {
+            onNavigateToVerifyEmail()
+        } else if (uiState.isSuccess) {
+            if (authViewModel.isEmailVerified()) {
+                authViewModel.resetState()
+                onNavigateToHome()
+            } else {
+                onNavigateToVerifyEmail()
+            }
+        }
+    }
+
     // Google Sign-In Activity Result Launcher
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -168,14 +203,12 @@ fun LoginScreen(
                 val name = account?.displayName ?: ""
 
                 if (selectedTab == AuthTab.CREATE_ACCOUNT) {
-                    // USER ON CREATE ACCOUNT TAB: Do not directly enter. Check registration, pre-fill form and prompt for missing fields.
                     if (email.isNotBlank()) {
                         authViewModel.handleGoogleInCreateAccount(email, name)
                     } else {
                         authViewModel.setErrorMessage("Could not retrieve email from Google account.")
                     }
                 } else {
-                    // USER ON SIGN IN TAB: Verify if registered in Firestore. If yes, enter; if not, switch to Create Account.
                     if (idToken != null) {
                         val credential = GoogleAuthProvider.getCredential(idToken, null)
                         authViewModel.signInWithGoogle(credential, googleEmail = email, googleName = name)
@@ -212,19 +245,11 @@ fun LoginScreen(
             }
 
             val client = GoogleSignIn.getClient(context, gsoBuilder.build())
-            // Always sign out before launching so Google always presents the account picker for selecting any account
             client.signOut().addOnCompleteListener {
                 googleSignInLauncher.launch(client.signInIntent)
             }
         } catch (e: Exception) {
             authViewModel.setErrorMessage("Google Sign-In is unavailable on this device.")
-        }
-    }
-
-    LaunchedEffect(uiState.isSuccess) {
-        if (uiState.isSuccess) {
-            authViewModel.resetState()
-            onNavigateToHome()
         }
     }
 
@@ -252,6 +277,150 @@ fun LoginScreen(
         ) {
             DatePicker(state = datePickerState)
         }
+    }
+
+    // 2C: Forgot Password Dialog
+    if (showForgotPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showForgotPasswordDialog = false
+                authViewModel.clearForgotPasswordMessage()
+            },
+            title = {
+                Text("Reset Password", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter your registered email address to receive a password reset link.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = forgotEmail,
+                        onValueChange = { forgotEmail = it },
+                        label = { Text("Email Address") },
+                        placeholder = { Text("example@gmail.com") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    uiState.forgotPasswordMessage?.let { msg ->
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = msg,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = TealPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (forgotEmail.isNotBlank()) {
+                            authViewModel.sendPasswordResetEmail(forgotEmail)
+                        }
+                    },
+                    enabled = forgotEmail.isNotBlank() && !uiState.isForgotPasswordLoading,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Send Reset Link")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showForgotPasswordDialog = false
+                        authViewModel.clearForgotPasswordMessage()
+                    }
+                ) {
+                    Text("Close")
+                }
+            }
+        )
+    }
+
+    // 2A: Phone OTP Verification Dialog
+    if (uiState.isOtpPending) {
+        AlertDialog(
+            onDismissRequest = {
+                authViewModel.cancelPhoneOtp()
+                enteredOtpCode = ""
+            },
+            title = {
+                Text("Verify Phone Number", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Enter the 6-digit verification code sent to your phone number.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = enteredOtpCode,
+                        onValueChange = {
+                            if (it.length <= 6 && it.all { char -> char.isDigit() }) {
+                                enteredOtpCode = it
+                            }
+                        },
+                        label = { Text("6-Digit Code") },
+                        placeholder = { Text("123456") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (otpResendCooldown > 0) "Resend code in ${otpResendCooldown}s" else "Didn't receive code?",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (otpResendCooldown == 0 && activity != null) {
+                            TextButton(onClick = {
+                                otpResendCooldown = 60
+                                authViewModel.resendPhoneOtp(activity)
+                            }) {
+                                Text("Resend", fontWeight = FontWeight.Bold, color = TealPrimary)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        authViewModel.submitPhoneOtp(enteredOtpCode)
+                    },
+                    enabled = enteredOtpCode.length == 6 && !uiState.isLoading,
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Verify & Complete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    authViewModel.cancelPhoneOtp()
+                    enteredOtpCode = ""
+                }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     Box(
@@ -392,7 +561,7 @@ fun LoginScreen(
                 }
             }
 
-            // Info / Success Guidance Banner (Mint/Teal)
+            // Info / Guidance Banner (Mint/Teal)
             AnimatedVisibility(
                 visible = uiState.infoMessage != null,
                 enter = fadeIn(),
@@ -476,7 +645,26 @@ fun LoginScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                // 2C: Forgot Password Link
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = {
+                        forgotEmail = signInEmail
+                        showForgotPasswordDialog = true
+                    }) {
+                        Text(
+                            text = "Forgot password?",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = TealPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
                     onClick = {
@@ -626,6 +814,7 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
+                // Phase 2A: Button starts Phone OTP verification
                 Button(
                     onClick = {
                         focusManager.clearFocus()
@@ -651,8 +840,10 @@ fun LoginScreen(
                             valid = false
                         }
 
-                        if (valid) {
-                            authViewModel.signUp(
+                        if (valid && activity != null) {
+                            otpResendCooldown = 60
+                            authViewModel.startSignUpWithPhoneOtp(
+                                activity = activity,
                                 fullName = signUpFullName,
                                 dob = signUpDob,
                                 phone = signUpPhone,
@@ -668,7 +859,7 @@ fun LoginScreen(
                     enabled = !uiState.isLoading
                 ) {
                     Text(
-                        text = stringResource(R.string.create_account),
+                        text = "Verify Phone & Create Account",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                 }
