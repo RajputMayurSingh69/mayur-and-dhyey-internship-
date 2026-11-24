@@ -133,6 +133,28 @@ fun LoginScreen(
     var emailError by rememberSaveable { mutableStateOf<String?>(null) }
     var passwordError by rememberSaveable { mutableStateOf<String?>(null) }
 
+    // Automatic tab switching and field pre-filling based on ViewModel state
+    LaunchedEffect(uiState.switchToTab, uiState.prefillEmail, uiState.prefillName) {
+        uiState.switchToTab?.let { targetTab ->
+            selectedTab = targetTab
+            uiState.prefillEmail?.let { email ->
+                if (targetTab == AuthTab.SIGN_IN) {
+                    signInEmail = email
+                } else {
+                    signUpEmail = email
+                    emailError = null
+                }
+            }
+            uiState.prefillName?.let { name ->
+                if (name.isNotBlank()) {
+                    signUpFullName = name
+                    nameError = null
+                }
+            }
+            authViewModel.clearTabSwitch()
+        }
+    }
+
     // Google Sign-In Activity Result Launcher
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -142,15 +164,27 @@ fun LoginScreen(
             try {
                 val account = task.getResult(ApiException::class.java)
                 val idToken = account?.idToken
-                if (idToken != null) {
-                    val credential = GoogleAuthProvider.getCredential(idToken, null)
-                    authViewModel.signInWithGoogle(credential)
+                val email = account?.email ?: ""
+                val name = account?.displayName ?: ""
+
+                if (selectedTab == AuthTab.CREATE_ACCOUNT) {
+                    // USER ON CREATE ACCOUNT TAB: Do not directly enter. Check registration, pre-fill form and prompt for missing fields.
+                    if (email.isNotBlank()) {
+                        authViewModel.handleGoogleInCreateAccount(email, name)
+                    } else {
+                        authViewModel.setErrorMessage("Could not retrieve email from Google account.")
+                    }
                 } else {
-                    // In developer environments where web client id is not yet provisioned in google-services.json
-                    account?.email?.let { email ->
-                        authViewModel.setErrorMessage("Google account ($email) selected. Please ensure Google Provider & Web Client ID are enabled in Firebase Console.")
-                    } ?: run {
-                        authViewModel.setErrorMessage("Google Sign-In requires SHA-1 fingerprint configured in Firebase Console.")
+                    // USER ON SIGN IN TAB: Verify if registered in Firestore. If yes, enter; if not, switch to Create Account.
+                    if (idToken != null) {
+                        val credential = GoogleAuthProvider.getCredential(idToken, null)
+                        authViewModel.signInWithGoogle(credential, googleEmail = email, googleName = name)
+                    } else {
+                        account?.email?.let { unverifiedEmail ->
+                            authViewModel.setErrorMessage("Google account ($unverifiedEmail) selected. Please ensure Google Provider & Web Client ID are enabled in Firebase Console.")
+                        } ?: run {
+                            authViewModel.setErrorMessage("Google Sign-In requires SHA-1 fingerprint configured in Firebase Console.")
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -161,6 +195,7 @@ fun LoginScreen(
 
     fun startGoogleSignIn() {
         authViewModel.clearError()
+        authViewModel.clearInfo()
         try {
             val webClientId = try {
                 val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
@@ -287,6 +322,7 @@ fun LoginScreen(
                             .clickable {
                                 selectedTab = AuthTab.SIGN_IN
                                 authViewModel.clearError()
+                                authViewModel.clearInfo()
                             },
                         shape = RoundedCornerShape(10.dp),
                         color = if (selectedTab == AuthTab.SIGN_IN) TealPrimary else Color.Transparent
@@ -312,6 +348,7 @@ fun LoginScreen(
                             .clickable {
                                 selectedTab = AuthTab.CREATE_ACCOUNT
                                 authViewModel.clearError()
+                                authViewModel.clearInfo()
                             },
                         shape = RoundedCornerShape(10.dp),
                         color = if (selectedTab == AuthTab.CREATE_ACCOUNT) TealPrimary else Color.Transparent
@@ -332,7 +369,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Error Banner
+            // Error Banner (Red)
             AnimatedVisibility(
                 visible = uiState.errorMessage != null,
                 enter = fadeIn(),
@@ -355,6 +392,32 @@ fun LoginScreen(
                 }
             }
 
+            // Info / Success Guidance Banner (Mint/Teal)
+            AnimatedVisibility(
+                visible = uiState.infoMessage != null,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                uiState.infoMessage?.let { info ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MintAccent.copy(alpha = 0.25f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = info,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = TealPrimary,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+            }
+
             // FORM CONTENT BASED ON SELECTED TAB
             if (selectedTab == AuthTab.SIGN_IN) {
                 // ==================== SIGN IN FORM ====================
@@ -363,6 +426,7 @@ fun LoginScreen(
                     onValueChange = {
                         signInEmail = it
                         authViewModel.clearError()
+                        authViewModel.clearInfo()
                     },
                     label = { Text(stringResource(R.string.email_hint)) },
                     placeholder = { Text("example@gmail.com") },
@@ -383,6 +447,7 @@ fun LoginScreen(
                     onValueChange = {
                         signInPassword = it
                         authViewModel.clearError()
+                        authViewModel.clearInfo()
                     },
                     label = { Text("Password") },
                     leadingIcon = {
@@ -438,6 +503,7 @@ fun LoginScreen(
                         signUpFullName = it
                         nameError = null
                         authViewModel.clearError()
+                        authViewModel.clearInfo()
                     },
                     label = { Text(stringResource(R.string.full_name_hint)) },
                     placeholder = { Text("e.g. John Doe") },
@@ -484,6 +550,7 @@ fun LoginScreen(
                             signUpPhone = it
                             phoneError = null
                             authViewModel.clearError()
+                            authViewModel.clearInfo()
                         }
                     },
                     label = { Text(stringResource(R.string.phone_hint)) },
@@ -507,6 +574,7 @@ fun LoginScreen(
                         signUpEmail = it
                         emailError = null
                         authViewModel.clearError()
+                        authViewModel.clearInfo()
                     },
                     label = { Text(stringResource(R.string.email_hint)) },
                     placeholder = { Text("username@gmail.com") },
@@ -529,6 +597,7 @@ fun LoginScreen(
                         signUpPassword = it
                         passwordError = null
                         authViewModel.clearError()
+                        authViewModel.clearInfo()
                     },
                     label = { Text(stringResource(R.string.password_hint)) },
                     leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = TealPrimary) },

@@ -1,8 +1,12 @@
 package com.example.mayuranddhyeyinternshipproject.data.repository
 
+import android.content.Context
 import android.util.Log
 import com.example.mayuranddhyeyinternshipproject.data.model.UserProfile
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
@@ -45,13 +49,27 @@ class AuthRepository(
     }
 
     /**
+     * Checks if an email is already registered in Firebase Authentication.
+     */
+    suspend fun checkEmailRegistered(email: String): Boolean {
+        val cleanEmail = email.trim()
+        return try {
+            val result = auth.fetchSignInMethodsForEmail(cleanEmail).await()
+            !result.signInMethods.isNullOrEmpty()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
      * Registers a new user following strict security sequencing:
      * 1. Validates all inputs locally first.
-     * 2. Normalizes phone to digits only and computes its SHA-256 hash.
-     * 3. Creates Firebase Auth user without enumeration checks; maps collision directly.
-     * 4. Executes ONE Firestore transaction to check phone_index/{hash} and create both
+     * 2. Checks if email is already registered in Firebase.
+     * 3. Normalizes phone to digits only and computes its SHA-256 hash.
+     * 4. Creates Firebase Auth user without enumeration checks; maps collision directly.
+     * 5. Executes ONE Firestore transaction to check phone_index/{hash} and create both
      *    phone_index and user profile records atomically.
-     * 5. If phone is taken, deletes the created Auth user and logs only a generic message.
+     * 6. If phone is taken, deletes the created Auth user and logs only a generic message.
      */
     suspend fun signUp(
         fullName: String,
@@ -71,15 +89,20 @@ class AuthRepository(
         val cleanName = fullName.trim()
         val cleanDob = dob.trim()
 
-        // 2. Normalize phone number to digits only and compute SHA-256 hash
+        // 2. Check if email is already registered before attempting creation
+        if (checkEmailRegistered(cleanEmail)) {
+            return Result.failure(IllegalStateException("Account already exists with this email, please sign in"))
+        }
+
+        // 3. Normalize phone number to digits only and compute SHA-256 hash
         val cleanPhone = phone.filter { it.isDigit() }
         val phoneHash = sha256(cleanPhone)
 
-        // 3. Call FirebaseAuth.createUserWithEmailAndPassword directly
+        // 4. Call FirebaseAuth.createUserWithEmailAndPassword directly
         val authResult = try {
             auth.createUserWithEmailAndPassword(cleanEmail, password).await()
         } catch (e: FirebaseAuthUserCollisionException) {
-            return Result.failure(IllegalStateException("Account already exists, please sign in"))
+            return Result.failure(IllegalStateException("Account already exists with this email, please sign in"))
         } catch (e: FirebaseNetworkException) {
             return Result.failure(IllegalStateException("Network connection error. Please check your internet connection."))
         } catch (e: Exception) {
@@ -89,7 +112,7 @@ class AuthRepository(
         val user = authResult.user
             ?: return Result.failure(IllegalStateException("User creation failed. Please try again."))
 
-        // 4. After Auth user exists, run ONE Firestore transaction
+        // 5. After Auth user exists, run ONE Firestore transaction
         val phoneIndexRef = firestore.collection("phone_index").document(phoneHash)
         val userDocRef = firestore.collection("users").document(user.uid)
         val now = System.currentTimeMillis()
@@ -124,7 +147,7 @@ class AuthRepository(
         } catch (e: Exception) {
             val isPhoneTaken = e.message == "PHONE_TAKEN" || e.cause?.message == "PHONE_TAKEN"
 
-            // 5. If transaction fails with PHONE_TAKEN, cleanup user and report friendly message
+            // 6. If transaction fails with PHONE_TAKEN, cleanup user and report friendly message
             if (isPhoneTaken) {
                 try {
                     user.delete().await()
@@ -146,7 +169,7 @@ class AuthRepository(
 
     /**
      * Signs in user with email and password only. Never creates an account here.
-     * Uses uniform error messaging for user-not-found and invalid credentials to prevent email enumeration.
+     * Verifies against Firebase Auth and Firestore user profile.
      */
     suspend fun signIn(email: String, password: String): Result<UserProfile> {
         validateEmail(email)?.let { return Result.failure(IllegalArgumentException(it)) }
@@ -163,36 +186,66 @@ class AuthRepository(
 
             val doc = firestore.collection("users").document(user.uid).get().await()
             val profile = doc.toObject(UserProfile::class.java)
-                ?: return Result.failure(IllegalStateException("No account found, or wrong password. Please check or create a new account."))
-
-            Result.success(profile)
+            if (profile != null) {
+                Result.success(profile)
+            } else {
+                // Auth user exists but profile document is missing (e.g. deleted from Firestore)
+                Result.failure(IllegalStateException("USER_PROFILE_MISSING:$cleanEmail"))
+            }
         } catch (e: FirebaseAuthInvalidUserException) {
-            Result.failure(IllegalStateException("No account found, or wrong password. Please check or create a new account."))
+            Result.failure(IllegalStateException("USER_NOT_FOUND:$cleanEmail"))
         } catch (e: FirebaseAuthInvalidCredentialsException) {
-            Result.failure(IllegalStateException("No account found, or wrong password. Please check or create a new account."))
+            // Check sign in methods to differentiate between non-existent account, Google-only account, or wrong password
+            val methods = try {
+                auth.fetchSignInMethodsForEmail(cleanEmail).await().signInMethods
+            } catch (ex: Exception) {
+                null
+            }
+            when {
+                methods != null && methods.isEmpty() -> {
+                    Result.failure(IllegalStateException("USER_NOT_FOUND:$cleanEmail"))
+                }
+                methods != null && methods.contains("google.com") && !methods.contains("password") -> {
+                    Result.failure(IllegalStateException("GOOGLE_ACCOUNT_ONLY:$cleanEmail"))
+                }
+                else -> {
+                    Result.failure(IllegalStateException("Incorrect password. Please try again or reset your password."))
+                }
+            }
         } catch (e: FirebaseNetworkException) {
             Result.failure(IllegalStateException("Network connection error. Please check your internet connection."))
         } catch (e: Exception) {
-            Result.failure(IllegalStateException(mapAuthError(e)))
+            val msg = e.localizedMessage?.lowercase(Locale.ROOT) ?: ""
+            if (msg.contains("no user record") || msg.contains("user-not-found")) {
+                Result.failure(IllegalStateException("USER_NOT_FOUND:$cleanEmail"))
+            } else {
+                Result.failure(IllegalStateException(mapAuthError(e)))
+            }
         }
     }
 
-    fun signOut(context: android.content.Context? = null) {
+    fun signOut(context: Context? = null) {
         auth.signOut()
         if (context != null) {
             try {
-                com.google.android.gms.auth.api.signin.GoogleSignIn.getClient(
+                GoogleSignIn.getClient(
                     context,
-                    com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN
+                    GoogleSignInOptions.DEFAULT_SIGN_IN
                 ).signOut()
             } catch (ignored: Exception) {}
         }
     }
 
     /**
-     * Signs in using a Google AuthCredential and saves/retrieves user profile in Firestore.
+     * Signs in using a Google AuthCredential on the Sign In tab.
+     * Verifies that the user already has a complete profile in Firestore.
+     * If user does NOT have a profile in Firestore, signs out and returns GOOGLE_USER_NOT_REGISTERED.
      */
-    suspend fun signInWithGoogleCredential(credential: com.google.firebase.auth.AuthCredential): Result<UserProfile> {
+    suspend fun signInWithGoogleCredential(
+        credential: AuthCredential,
+        googleEmail: String = "",
+        googleName: String = ""
+    ): Result<UserProfile> {
         return try {
             val authResult = auth.signInWithCredential(credential).await()
             val user = authResult.user
@@ -202,22 +255,19 @@ class AuthRepository(
             val doc = docRef.get().await()
             val existing = doc.toObject(UserProfile::class.java)
 
-            val profile = if (existing != null) {
-                existing
+            if (existing != null && existing.phone.isNotBlank()) {
+                // User is fully registered in Firestore
+                Result.success(existing)
             } else {
-                val newProfile = UserProfile(
-                    uid = user.uid,
-                    fullName = user.displayName?.takeIf { it.isNotBlank() } ?: "MedMate User",
-                    email = user.email ?: "",
-                    phone = user.phoneNumber?.filter { it.isDigit() }?.takeLast(10) ?: "",
-                    dob = "",
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis()
-                )
-                docRef.set(newProfile).await()
-                newProfile
+                // Incomplete or non-existent profile. Do not let user directly enter.
+                try {
+                    auth.signOut()
+                } catch (ignored: Exception) {}
+
+                val resolvedEmail = user.email?.takeIf { it.isNotBlank() } ?: googleEmail
+                val resolvedName = user.displayName?.takeIf { it.isNotBlank() } ?: googleName
+                Result.failure(IllegalStateException("GOOGLE_USER_NOT_REGISTERED:$resolvedEmail:$resolvedName"))
             }
-            Result.success(profile)
         } catch (e: Exception) {
             Result.failure(IllegalStateException(mapAuthError(e)))
         }
@@ -229,26 +279,28 @@ class AuthRepository(
     private fun mapAuthError(e: Exception): String {
         return when (e) {
             is FirebaseAuthUserCollisionException ->
-                "Account already exists, please sign in"
+                "Account already exists with this email, please sign in"
             is FirebaseAuthWeakPasswordException ->
                 "Password is too weak. Please choose a stronger password."
-            is FirebaseAuthInvalidUserException,
+            is FirebaseAuthInvalidUserException ->
+                "No account found with this email. Please create an account first."
             is FirebaseAuthInvalidCredentialsException ->
-                "No account found, or wrong password. Please check or create a new account."
+                "Incorrect email or password. Please check and try again."
             is FirebaseNetworkException ->
                 "Network connection error. Please check your internet connection."
             else -> {
                 val msg = e.localizedMessage?.lowercase(Locale.ROOT) ?: ""
                 when {
                     msg.contains("no user record") ||
-                    msg.contains("user-not-found") ||
+                    msg.contains("user-not-found") ->
+                        "No account found with this email. Please create an account first."
                     msg.contains("invalid-credential") ||
                     msg.contains("invalid credential") ||
                     msg.contains("wrong password") ||
                     msg.contains("password is invalid") ->
-                        "No account found, or wrong password. Please check or create a new account."
+                        "Incorrect password. Please try again or reset your password."
                     msg.contains("already in use") || msg.contains("email-already-in-use") ->
-                        "Account already exists, please sign in"
+                        "Account already exists with this email, please sign in"
                     msg.contains("network") ->
                         "Network connection error. Please check your internet connection."
                     msg.contains("too many requests") || msg.contains("too-many-requests") ->
