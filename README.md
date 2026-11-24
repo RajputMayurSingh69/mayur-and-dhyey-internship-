@@ -128,6 +128,40 @@ Using the Gradle wrapper from terminal:
 ```
 Or open the project in Android Studio, select your target device/emulator, and click **Run (Shift + F10)**.
 
+### 7. Firebase App Check Setup & Verification (Phase 3)
+MedMate integrates Firebase App Check with **Play Integrity** for production release builds and the **Debug Provider** for local debug builds.
+
+#### Step 1: Obtain the Debug Token (Do NOT Hardcode Tokens)
+1. Run the debug build on your emulator or physical test device:
+   ```powershell
+   .\gradlew.bat installDebug
+   ```
+2. Open Android Studio **Logcat** and apply the filter:
+   ```text
+   tag:DebugAppCheckProvider
+   ```
+   You will see an output similar to:
+   ```text
+   D/DebugAppCheckProvider: Enter this debug secret into the allow list in the Firebase Console for your project: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+   ```
+3. Copy the UUID debug secret token.
+
+#### Step 2: Register the Debug Token in Firebase Console
+1. Go to **Firebase Console** -> Select project `medmate-3ac99`.
+2. In the left navigation, go to **Build** -> **App Check**.
+3. Under the **Apps** tab, find your Android app (`com.example.mayuranddhyeyinternshipproject`).
+4. Click the three dots (⋮) -> **Manage debug tokens**.
+5. Click **Add debug token**, provide a name (e.g., `Pixel_Emulator_Debug`), paste your debug secret token, and click **Save**.
+
+#### Step 3: Monitoring Mode vs. Enforced Mode
+- **Monitoring Mode (Current / Recommended during Testing)**:
+  - App Check metrics and attestation requests are tracked in the Firebase Console dashboard.
+  - Non-attested requests are logged as unverified but are **NOT** blocked, allowing you to test flows safely without disruptions.
+- **Enforcing App Check**:
+  - Once all legitimate clients (Debug allowlisted tokens and Play Store release builds) show verified requests in the App Check metrics graph:
+  - In Firebase Console -> **App Check** -> **Firestore / Cloud Functions** -> click **Enforce**.
+  - All unauthorized requests originating outside the certified app will immediately be rejected with HTTP 401 / permission-denied.
+
 ---
 
 ## 📋 Comprehensive Manual Test Cases Checklist
