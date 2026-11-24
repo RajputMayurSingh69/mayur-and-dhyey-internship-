@@ -12,8 +12,8 @@ service cloud.firestore {
     // Fields:
     //   - fullName: string (required, 1..100 characters)
     //   - email: string (required, valid email ending in @gmail.com)
-    //   - phone: string (required, exactly 10 digits)
-    //   - dob: string (required, format YYYY-MM-DD)
+    //   - phone: string (required, exactly 10 digits, or empty string for initial Google Sign-In)
+    //   - dob: string (required, format YYYY-MM-DD, or empty string for initial Google Sign-In)
     //   - defaultTimes: map (optional, time slot mappings, max 20 keys)
     //   - pharmacy: map (optional, pharmacy details, max 20 keys)
     //   - prescriber: map (optional, prescriber details, max 20 keys)
@@ -121,12 +121,12 @@ service cloud.firestore {
              data.email.size() >= 11 &&
              data.email.size() <= 100 &&
              data.email.matches('^[a-zA-Z0-9._%+-]+@gmail[.]com$') &&
-             // phone validation (exactly 10 digits)
+             // phone validation (10 digits, or empty string on initial Google Sign-In)
              data.phone is string &&
-             data.phone.matches('^[0-9]{10}$') &&
-             // dob validation (YYYY-MM-DD)
+             (data.phone == '' || data.phone.matches('^[0-9]{10}$')) &&
+             // dob validation (YYYY-MM-DD, or empty string on initial Google Sign-In)
              data.dob is string &&
-             data.dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+             (data.dob == '' || data.dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')) &&
              // timestamps / epoch millis
              ('createdAt' in data && isValidTimeField(data.createdAt)) &&
              ('updatedAt' in data && isValidTimeField(data.updatedAt)) &&

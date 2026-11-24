@@ -177,8 +177,16 @@ class AuthRepository(
         }
     }
 
-    fun signOut() {
+    fun signOut(context: android.content.Context? = null) {
         auth.signOut()
+        if (context != null) {
+            try {
+                com.google.android.gms.auth.api.signin.GoogleSignIn.getClient(
+                    context,
+                    com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN
+                ).signOut()
+            } catch (ignored: Exception) {}
+        }
     }
 
     /**
@@ -199,9 +207,10 @@ class AuthRepository(
             } else {
                 val newProfile = UserProfile(
                     uid = user.uid,
-                    fullName = user.displayName ?: "MedMate User",
+                    fullName = user.displayName?.takeIf { it.isNotBlank() } ?: "MedMate User",
                     email = user.email ?: "",
-                    phone = user.phoneNumber ?: "",
+                    phone = user.phoneNumber?.filter { it.isDigit() }?.takeLast(10) ?: "",
+                    dob = "",
                     createdAt = System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis()
                 )

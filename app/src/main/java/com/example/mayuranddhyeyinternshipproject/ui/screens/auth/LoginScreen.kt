@@ -177,7 +177,10 @@ fun LoginScreen(
             }
 
             val client = GoogleSignIn.getClient(context, gsoBuilder.build())
-            googleSignInLauncher.launch(client.signInIntent)
+            // Always sign out before launching so Google always presents the account picker for selecting any account
+            client.signOut().addOnCompleteListener {
+                googleSignInLauncher.launch(client.signInIntent)
+            }
         } catch (e: Exception) {
             authViewModel.setErrorMessage("Google Sign-In is unavailable on this device.")
         }
