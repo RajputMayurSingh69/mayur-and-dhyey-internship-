@@ -14,6 +14,7 @@ data class UserProfile(
     val fullName: String = "",
     val email: String = "",
     val phone: String = "",
+    val fullPhone: String = "",
     val dob: String = "", // Format: YYYY-MM-DD
     val defaultTimes: Map<String, String> = mapOf(
         TimeSlot.MORNING.name to "08:00",

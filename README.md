@@ -95,14 +95,33 @@ MedMate is a complete, modern Android medicine reminder and adherence tracking a
    ```
 6. Download `google-services.json` and place it in the `app/` directory of the project.
 
-### 3. Deploying Firestore Security Rules
-Deploy the included rules using Firebase CLI:
-```bash
-firebase deploy --only firestore:rules
-```
-*(Or copy the contents of `firestore.rules` directly into the Rules tab in Firebase Console).*
+### 3. Deploying Cloud Functions and Firestore Security Rules
+1. Set the secret HMAC key for phone hashing in Secret Manager (32+ random characters):
+   ```bash
+   firebase functions:secrets:set PHONE_HMAC_KEY
+   ```
+2. Deploy Cloud Functions and Firestore Security Rules using Firebase CLI:
+   ```bash
+   firebase deploy --only functions,firestore:rules
+   ```
 
-### 4. Build and Run the App
+### 4. One-Time Migration / Clear Old Data Script
+Existing `phone_index` documents were created using client-side unsalted SHA-256. After confirming there is no production user data, run the one-time cleanup script manually:
+```bash
+npx ts-node functions/scripts/clear-old-phone-index.ts
+```
+
+### 5. Phase 1 Verification & Testing (Firebase Emulator)
+To verify Phase 1 security rules and Cloud Functions triggers locally with Firebase Emulator:
+```bash
+firebase emulators:start --only auth,functions,firestore
+```
+- **Test 1 (Owner-only Read):** Sign in as User A (`uid_A`, `email_verified=true`). Read `users/uid_A` -> ALLOWED. Read `users/uid_B` -> DENIED.
+- **Test 2 (phone_index client isolation):** Any client attempting `get`, `list`, or `write` on `/phone_index` -> DENIED.
+- **Test 3 (completeSignUp Callable):** Call `completeSignUp` from authenticated caller -> creates `phone_index/{phoneHash}` and `users/{uid}` via Admin SDK.
+- **Test 4 (Account Deletion Cleanup Trigger):** Delete Auth user -> `cleanupUserData` trigger automatically deletes `users/{uid}`, all subcollections (`medicines`, `history`), and any `phone_index` document where `uid == user.uid`.
+
+### 6. Build and Run the App
 Using the Gradle wrapper from terminal:
 ```powershell
 .\gradlew.bat assembleDebug

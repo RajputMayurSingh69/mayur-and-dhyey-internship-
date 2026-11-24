@@ -1,7 +1,6 @@
 package com.example.mayuranddhyeyinternshipproject.data.repository
 
 import android.content.Context
-import android.util.Log
 import com.example.mayuranddhyeyinternshipproject.data.model.UserProfile
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -13,18 +12,19 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.tasks.await
-import java.security.MessageDigest
 import java.util.Locale
 
 /**
- * Handles Authentication, input validation, and user profile persistence in Cloud Firestore.
- * Implements secure sign-up with SHA-256 phone index verification in a single Firestore transaction,
- * safe cleanup on collision, and credential-enumeration-proof sign-in error messaging.
+ * Handles Authentication, input validation, and user profile management.
+ * In Phase 1: All client-side SHA-256 phone hashing and client writes to "phone_index" are removed.
+ * Profile creation is delegated to the secure completeSignUp Cloud Function using HMAC-SHA256.
  */
 class AuthRepository(
     private val auth: FirebaseAuth = FirebaseAuth.getInstance(),
-    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
+    private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val functions: FirebaseFunctions = FirebaseFunctions.getInstance("asia-south1")
 ) {
 
     val currentUser get() = auth.currentUser
@@ -38,15 +38,6 @@ class AuthRepository(
     fun validatePhone(phone: String): String? = ValidationUtils.validatePhone(phone)
     fun validateEmail(email: String): String? = ValidationUtils.validateEmail(email)
     fun validatePassword(password: String): String? = ValidationUtils.validatePassword(password)
-
-    /**
-     * Computes the SHA-256 hash of a string.
-     */
-    private fun sha256(input: String): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(input.toByteArray(Charsets.UTF_8))
-        return digest.joinToString("") { "%02x".format(it) }
-    }
 
     /**
      * Checks if an email is already registered in Firebase Authentication.
@@ -65,11 +56,10 @@ class AuthRepository(
      * Registers a new user following strict security sequencing:
      * 1. Validates all inputs locally first.
      * 2. Checks if email is already registered in Firebase.
-     * 3. Normalizes phone to digits only and computes its SHA-256 hash.
-     * 4. Creates Firebase Auth user without enumeration checks; maps collision directly.
-     * 5. Executes ONE Firestore transaction to check phone_index/{hash} and create both
-     *    phone_index and user profile records atomically.
-     * 6. If phone is taken, deletes the created Auth user and logs only a generic message.
+     * 3. Creates Firebase Auth user.
+     * 4. Calls completeSignUp Cloud Function which verifies phone HMAC in phone_index
+     *    and creates user profile in a single atomic transaction.
+     * 5. If phone is already registered, Cloud Function automatically deletes the Auth user.
      */
     suspend fun signUp(
         fullName: String,
@@ -88,17 +78,14 @@ class AuthRepository(
         val cleanEmail = email.trim()
         val cleanName = fullName.trim()
         val cleanDob = dob.trim()
+        val cleanPhone = phone.filter { it.isDigit() }
 
         // 2. Check if email is already registered before attempting creation
         if (checkEmailRegistered(cleanEmail)) {
             return Result.failure(IllegalStateException("Account already exists with this email, please sign in"))
         }
 
-        // 3. Normalize phone number to digits only and compute SHA-256 hash
-        val cleanPhone = phone.filter { it.isDigit() }
-        val phoneHash = sha256(cleanPhone)
-
-        // 4. Call FirebaseAuth.createUserWithEmailAndPassword directly
+        // 3. Call FirebaseAuth.createUserWithEmailAndPassword directly
         val authResult = try {
             auth.createUserWithEmailAndPassword(cleanEmail, password).await()
         } catch (e: FirebaseAuthUserCollisionException) {
@@ -112,57 +99,36 @@ class AuthRepository(
         val user = authResult.user
             ?: return Result.failure(IllegalStateException("User creation failed. Please try again."))
 
-        // 5. After Auth user exists, run ONE Firestore transaction
-        val phoneIndexRef = firestore.collection("phone_index").document(phoneHash)
-        val userDocRef = firestore.collection("users").document(user.uid)
-        val now = System.currentTimeMillis()
-
-        val profile = UserProfile(
-            uid = user.uid,
-            fullName = cleanName,
-            email = cleanEmail,
-            phone = cleanPhone,
-            dob = cleanDob,
-            createdAt = now,
-            updatedAt = now
-        )
-
-        val phoneIndexData = mapOf(
-            "uid" to user.uid,
-            "createdAt" to now
+        // 4. Call completeSignUp Cloud Function (Server-side HMAC verification and profile creation)
+        val completeSignUpCallable = functions.getHttpsCallable("completeSignUp")
+        val data = mapOf(
+            "name" to cleanName,
+            "dateOfBirth" to cleanDob,
+            "phone" to cleanPhone,
+            "email" to cleanEmail
         )
 
         return try {
-            firestore.runTransaction { transaction ->
-                val phoneDoc = transaction.get(phoneIndexRef)
-                if (phoneDoc.exists()) {
-                    throw Exception("PHONE_TAKEN")
-                }
-                transaction.set(phoneIndexRef, phoneIndexData)
-                transaction.set(userDocRef, profile)
-                null
-            }.await()
+            completeSignUpCallable.call(data).await()
 
+            val maskedPhone = "******" + cleanPhone.takeLast(4)
+            val profile = UserProfile(
+                uid = user.uid,
+                fullName = cleanName,
+                email = cleanEmail,
+                phone = maskedPhone,
+                fullPhone = cleanPhone,
+                dob = cleanDob,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
             Result.success(profile)
         } catch (e: Exception) {
-            val isPhoneTaken = e.message == "PHONE_TAKEN" || e.cause?.message == "PHONE_TAKEN"
-
-            // 6. If transaction fails with PHONE_TAKEN, cleanup user and report friendly message
-            if (isPhoneTaken) {
-                try {
-                    user.delete().await()
-                } catch (cleanupEx: Exception) {
-                    Log.e("AuthRepository", "Failed to clean up user after duplicate phone detection")
-                }
+            val msg = e.localizedMessage?.lowercase(Locale.ROOT) ?: ""
+            if (msg.contains("phone-already-registered") || msg.contains("already-exists")) {
                 Result.failure(IllegalStateException("Phone number already registered with another account"))
             } else {
-                // If any other transaction failure occurred, clean up created Auth user
-                try {
-                    user.delete().await()
-                } catch (cleanupEx: Exception) {
-                    Log.e("AuthRepository", "Failed to clean up user after transaction error")
-                }
-                Result.failure(IllegalStateException(mapAuthError(e)))
+                Result.failure(IllegalStateException("Registration failed. Please try again."))
             }
         }
     }
@@ -220,6 +186,26 @@ class AuthRepository(
                 Result.failure(IllegalStateException("USER_NOT_FOUND:$cleanEmail"))
             } else {
                 Result.failure(IllegalStateException(mapAuthError(e)))
+            }
+        }
+    }
+
+    /**
+     * Updates user's phone number via the secure updatePhone Cloud Function.
+     */
+    suspend fun updatePhone(newPhone: String): Result<Unit> {
+        validatePhone(newPhone)?.let { return Result.failure(IllegalArgumentException(it)) }
+        return try {
+            val updatePhoneCallable = functions.getHttpsCallable("updatePhone")
+            val cleanPhone = newPhone.filter { it.isDigit() }
+            updatePhoneCallable.call(mapOf("newPhone" to cleanPhone)).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            val msg = e.localizedMessage?.lowercase(Locale.ROOT) ?: ""
+            if (msg.contains("phone-already-registered") || msg.contains("already-exists")) {
+                Result.failure(IllegalStateException("Phone number already registered with another account"))
+            } else {
+                Result.failure(IllegalStateException("Failed to update phone number. Please try again."))
             }
         }
     }
