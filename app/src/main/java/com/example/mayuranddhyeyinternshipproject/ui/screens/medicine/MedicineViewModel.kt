@@ -132,7 +132,15 @@ class MedicineViewModel(
                     _uiState.update { it.copy(isSaving = false, saveSuccess = true, errorMessage = null) }
                 },
                 onFailure = { error ->
-                    _uiState.update { it.copy(isSaving = false, errorMessage = error.localizedMessage ?: "Failed to save medicine.") }
+                    val msg = if (error.message?.contains("Too many actions", ignoreCase = true) == true ||
+                        error.message?.contains("permission", ignoreCase = true) == true ||
+                        error.message?.contains("rate", ignoreCase = true) == true
+                    ) {
+                        "Too many actions today. Please try again later."
+                    } else {
+                        error.localizedMessage ?: "Failed to save medicine."
+                    }
+                    _uiState.update { it.copy(isSaving = false, errorMessage = msg) }
                 }
             )
         }

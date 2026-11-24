@@ -271,7 +271,7 @@ class HomeViewModel(
                         )
                     }
                 },
-                onFailure = {
+                onFailure = { error ->
                     // On failure: restore the previous state for that dose only and emit one-time Snackbar event
                     _uiState.update { current ->
                         val revertedSlotMap = current.slotMedicines.toMutableMap().mapValues { (_, list) ->
@@ -295,7 +295,15 @@ class HomeViewModel(
                             lastRecordedStatus = null
                         )
                     }
-                    _eventFlow.emit(HomeUiEvent.ShowSnackbar("Could not save, please try again"))
+                    val snackbarMsg = if (error.message?.contains("Too many actions", ignoreCase = true) == true ||
+                        error.message?.contains("permission", ignoreCase = true) == true ||
+                        error.message?.contains("rate", ignoreCase = true) == true
+                    ) {
+                        "Too many actions today. Please try again later."
+                    } else {
+                        "Could not save, please try again"
+                    }
+                    _eventFlow.emit(HomeUiEvent.ShowSnackbar(snackbarMsg))
                 }
             )
         }

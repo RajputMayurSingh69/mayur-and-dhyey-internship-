@@ -2,9 +2,11 @@ import * as crypto from "crypto";
 import * as functions from "firebase-functions";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import { initializeApp } from "firebase-admin/app";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { getFirestore, FieldValue, FieldPath } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 
 // Initialize Firebase Admin SDK
@@ -266,3 +268,167 @@ export const updatePhone = onCall(
     }
   }
 );
+
+/**
+ * Phase 4: Server-Side Write Rate Limiting for Medicines.
+ * Triggered onCreate on users/{uid}/medicines/{medId}.
+ * Tracks medicines created today in users/{uid}/usage/{YYYY-MM-DD}.
+ * If medicinesCreatedToday > 50:
+ * - Deletes the newly created document via Admin SDK.
+ * - Sets users/{uid}.rateLimitedUntil = now + 1 hour.
+ * - Logs a security warning containing only uid and count (no personal data).
+ */
+export const checkMedicineWriteRateLimit = onDocumentCreated(
+  "users/{uid}/medicines/{medId}",
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const { uid } = event.params;
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const usageRef = db.collection("users").doc(uid).collection("usage").doc(today);
+    const userRef = db.collection("users").doc(uid);
+
+    let exceeds = false;
+    let countAfter = 0;
+
+    await db.runTransaction(async (transaction) => {
+      const usageDoc = await transaction.get(usageRef);
+      const data = usageDoc.data() || {};
+      const count = (data.medicinesCreatedToday || 0) + 1;
+      countAfter = count;
+
+      if (count > 50) {
+        exceeds = true;
+      } else {
+        transaction.set(
+          usageRef,
+          {
+            medicinesCreatedToday: count,
+            updatedAt: FieldValue.serverTimestamp()
+          },
+          { merge: true }
+        );
+      }
+    });
+
+    if (exceeds) {
+      console.warn(`Write rate limit exceeded for user ${uid}. medicinesCreatedToday count: ${countAfter}. Document deleted.`);
+      try {
+        await snapshot.ref.delete();
+      } catch (delErr) {
+        console.error(`Failed to delete rate-limited medicine doc for user ${uid}`);
+      }
+
+      const oneHourLater = new Date(Date.now() + 60 * 60 * 1000);
+      try {
+        await userRef.set(
+          {
+            rateLimitedUntil: oneHourLater
+          },
+          { merge: true }
+        );
+      } catch (setErr) {
+        console.error(`Failed to set rateLimitedUntil for user ${uid}`);
+      }
+    }
+  }
+);
+
+/**
+ * Phase 4: Server-Side Write Rate Limiting for History / Dose records.
+ * Triggered onCreate on users/{uid}/history/{histId}.
+ * Tracks history records created today in users/{uid}/usage/{YYYY-MM-DD}.
+ * If historyCreatedToday > 200:
+ * - Deletes the newly created document via Admin SDK.
+ * - Sets users/{uid}.rateLimitedUntil = now + 1 hour.
+ * - Logs a security warning containing only uid and count (no personal data).
+ */
+export const checkHistoryWriteRateLimit = onDocumentCreated(
+  "users/{uid}/history/{histId}",
+  async (event) => {
+    const snapshot = event.data;
+    if (!snapshot) return;
+
+    const { uid } = event.params;
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const usageRef = db.collection("users").doc(uid).collection("usage").doc(today);
+    const userRef = db.collection("users").doc(uid);
+
+    let exceeds = false;
+    let countAfter = 0;
+
+    await db.runTransaction(async (transaction) => {
+      const usageDoc = await transaction.get(usageRef);
+      const data = usageDoc.data() || {};
+      const count = (data.historyCreatedToday || 0) + 1;
+      countAfter = count;
+
+      if (count > 200) {
+        exceeds = true;
+      } else {
+        transaction.set(
+          usageRef,
+          {
+            historyCreatedToday: count,
+            updatedAt: FieldValue.serverTimestamp()
+          },
+          { merge: true }
+        );
+      }
+    });
+
+    if (exceeds) {
+      console.warn(`Write rate limit exceeded for user ${uid}. historyCreatedToday count: ${countAfter}. Document deleted.`);
+      try {
+        await snapshot.ref.delete();
+      } catch (delErr) {
+        console.error(`Failed to delete rate-limited history doc for user ${uid}`);
+      }
+
+      const oneHourLater = new Date(Date.now() + 60 * 60 * 1000);
+      try {
+        await userRef.set(
+          {
+            rateLimitedUntil: oneHourLater
+          },
+          { merge: true }
+        );
+      } catch (setErr) {
+        console.error(`Failed to set rateLimitedUntil for user ${uid}`);
+      }
+    }
+  }
+);
+
+/**
+ * Phase 4: Scheduled daily cleanup function.
+ * Deletes usage documents older than 7 days across all users to keep storage minimal.
+ * Logs only the count of deleted documents without any personal details.
+ */
+export const cleanupOldUsageDocs = onSchedule("every 24 hours", async () => {
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  let totalDeleted = 0;
+
+  try {
+    const usersSnapshot = await db.collection("users").get();
+    for (const userDoc of usersSnapshot.docs) {
+      const usageSnapshot = await userDoc.ref
+        .collection("usage")
+        .where(FieldPath.documentId(), "<", sevenDaysAgo)
+        .get();
+
+      if (!usageSnapshot.empty) {
+        const batch = db.batch();
+        usageSnapshot.docs.forEach((doc) => {
+          batch.delete(doc.ref);
+          totalDeleted++;
+        });
+        await batch.commit();
+      }
+    }
+    console.log(`Scheduled usage cleanup finished. Deleted ${totalDeleted} expired usage document(s).`);
+  } catch (err) {
+    console.error("Scheduled cleanup error while removing expired usage docs.");
+  }
+});

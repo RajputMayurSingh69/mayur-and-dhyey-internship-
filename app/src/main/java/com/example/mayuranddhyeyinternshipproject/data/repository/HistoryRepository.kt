@@ -100,7 +100,12 @@ class HistoryRepository(
             docRef.set(record).await()
             Result.success(record)
         } catch (e: Exception) {
-            Result.failure(e)
+            val msg = e.localizedMessage?.lowercase(java.util.Locale.ROOT) ?: ""
+            if (msg.contains("permission") || msg.contains("rate")) {
+                Result.failure(IllegalStateException("Too many actions today. Please try again later."))
+            } else {
+                Result.failure(e)
+            }
         }
     }
 }

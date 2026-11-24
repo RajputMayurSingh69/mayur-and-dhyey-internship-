@@ -69,7 +69,12 @@ class MedicineRepository(
             docRef.set(newMedicine).await()
             Result.success(docRef.id)
         } catch (e: Exception) {
-            Result.failure(e)
+            val msg = e.localizedMessage?.lowercase(java.util.Locale.ROOT) ?: ""
+            if (msg.contains("permission") || msg.contains("rate")) {
+                Result.failure(IllegalStateException("Too many actions today. Please try again later."))
+            } else {
+                Result.failure(e)
+            }
         }
     }
 
@@ -85,7 +90,12 @@ class MedicineRepository(
             getMedicinesCollection(userId).document(medicine.id).set(updated).await()
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            val msg = e.localizedMessage?.lowercase(java.util.Locale.ROOT) ?: ""
+            if (msg.contains("permission") || msg.contains("rate")) {
+                Result.failure(IllegalStateException("Too many actions today. Please try again later."))
+            } else {
+                Result.failure(e)
+            }
         }
     }
 
@@ -97,7 +107,12 @@ class MedicineRepository(
             getMedicinesCollection(userId).document(medicineId).delete().await()
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            val msg = e.localizedMessage?.lowercase(java.util.Locale.ROOT) ?: ""
+            if (msg.contains("permission") || msg.contains("rate")) {
+                Result.failure(IllegalStateException("Too many actions today. Please try again later."))
+            } else {
+                Result.failure(e)
+            }
         }
     }
 }

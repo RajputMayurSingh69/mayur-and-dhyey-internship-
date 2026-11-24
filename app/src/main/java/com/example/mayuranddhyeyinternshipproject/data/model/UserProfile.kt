@@ -27,6 +27,7 @@ data class UserProfile(
     val pharmacyAddress: String = "",
     val doctorName: String = "",
     val doctorContact: String = "",
+    val rateLimitedUntil: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

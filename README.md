@@ -162,6 +162,39 @@ MedMate integrates Firebase App Check with **Play Integrity** for production rel
   - In Firebase Console -> **App Check** -> **Firestore / Cloud Functions** -> click **Enforce**.
   - All unauthorized requests originating outside the certified app will immediately be rejected with HTTP 401 / permission-denied.
 
+### 8. Server-Side Write Rate Limiting & Abuse Prevention (Phase 4)
+To prevent write spam and denial-of-wallet attacks, MedMate implements server-side write rate limiting backed by Cloud Functions and Firestore Security Rules:
+
+#### Architecture & Rules
+1. **Document Write Triggers (`onCreate`)**:
+   - `checkMedicineWriteRateLimit`: triggers on `users/{uid}/medicines/{medId}`.
+   - `checkHistoryWriteRateLimit`: triggers on `users/{uid}/history/{histId}`.
+2. **Per-Day Usage Tracking**:
+   - Tracked in subcollection `users/{uid}/usage/{YYYY-MM-DD}` with counters `medicinesCreatedToday` and `historyCreatedToday`.
+   - Client read and write access to `usage` is strictly denied in `firestore.rules`.
+3. **Thresholds & Enforcement**:
+   - Limits: `medicinesCreatedToday <= 50`, `historyCreatedToday <= 200`.
+   - When exceeded:
+     - The newly created document is immediately removed via Admin SDK.
+     - `users/{uid}.rateLimitedUntil` is set to `now + 1 hour`.
+     - A security warning is logged with only `uid` and count (no PII).
+4. **Security Rules Enforcement**:
+   - `firestore.rules` enforces `isNotRateLimited(userId)` on all medicine/history writes.
+   - Any client write attempted while `rateLimitedUntil` is in the future is immediately rejected with permission-denied.
+5. **Scheduled Cleanup**:
+   - `cleanupOldUsageDocs` runs every 24 hours, automatically purging usage documents older than 7 days.
+6. **Client-Side UX**:
+   - When a write is rejected due to rate limiting, the app displays a clear and friendly message:
+     ```text
+     "Too many actions today. Please try again later."
+     ```
+
+#### Phase 4 Verification Steps (Firebase Emulator / Integration)
+- **Rate Limit Trigger Test**: Creating 51 medicine records in a loop causes the 51st document to be removed automatically and sets `rateLimitedUntil`.
+- **Rules Lockout Test**: Subsequent writes to `/medicines` or `/history` return `permission-denied` while `request.time <= rateLimitedUntil`.
+- **Scheduled Cleanup Test**: In emulator, triggering `cleanupOldUsageDocs` removes usage docs older than 7 days.
+- **Client App Test**: UI displays *"Too many actions today. Please try again later."* when a rate limit rejection occurs.
+
 ---
 
 ## 📋 Comprehensive Manual Test Cases Checklist

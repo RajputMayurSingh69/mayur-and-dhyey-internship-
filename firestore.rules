@@ -19,6 +19,14 @@ service cloud.firestore {
       return val is timestamp || val is int || val is number;
     }
 
+    // Check if the user is currently write rate-limited (Phase 4 write spam prevention)
+    function isNotRateLimited(userId) {
+      let userDoc = get(/databases/$(database)/documents/users/$(userId));
+      return !('rateLimitedUntil' in userDoc.data) ||
+             userDoc.data.rateLimitedUntil == null ||
+             request.time > userDoc.data.rateLimitedUntil;
+    }
+
     // ===============================================================
     // Domain Validators
     // ===============================================================
@@ -30,7 +38,7 @@ service cloud.firestore {
         'fullName', 'email', 'phone', 'fullPhone', 'dob',
         'defaultTimes', 'pharmacy', 'prescriber',
         'pharmacyName', 'pharmacyContact', 'pharmacyAddress',
-        'doctorName', 'doctorContact',
+        'doctorName', 'doctorContact', 'rateLimitedUntil',
         'createdAt', 'updatedAt', 'id', 'uid'
       ];
 
@@ -56,6 +64,8 @@ service cloud.firestore {
              // timestamps
              ('createdAt' in data && isValidTimeField(data.createdAt)) &&
              ('updatedAt' in data && isValidTimeField(data.updatedAt)) &&
+             // optional rate-limit field (timestamp or null)
+             (!('rateLimitedUntil' in data) || data.rateLimitedUntil == null || isValidTimeField(data.rateLimitedUntil)) &&
              // optional maps
              (!('defaultTimes' in data) || (data.defaultTimes is map && data.defaultTimes.keys().size() <= 20)) &&
              (!('pharmacy' in data) || (data.pharmacy is map && data.pharmacy.keys().size() <= 20)) &&
@@ -71,12 +81,13 @@ service cloud.firestore {
              (!('id' in data) || data.id == userId);
     }
 
-    // Validate user profile update (protects immutable fields createdAt and uid)
+    // Validate user profile update (protects immutable fields createdAt, uid, and rateLimitedUntil)
     function isUserUpdateValid(userId) {
       return isValidUser(request.resource.data, userId) &&
              (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
              (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid) &&
-             (!('id' in resource.data) || request.resource.data.id == resource.data.id);
+             (!('id' in resource.data) || request.resource.data.id == resource.data.id) &&
+             (!('rateLimitedUntil' in resource.data) || request.resource.data.rateLimitedUntil == resource.data.rateLimitedUntil);
     }
 
     // Validate medicine document schema and constraints
@@ -212,23 +223,30 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isVerifiedUser(userId);
       allow create: if false;
-      allow update: if isVerifiedUser(userId) && isUserUpdateValid(userId);
+      allow update: if isVerifiedUser(userId) &&
+                       (!('rateLimitedUntil' in resource.data) || resource.data.rateLimitedUntil == null || request.time > resource.data.rateLimitedUntil) &&
+                       isUserUpdateValid(userId);
       allow delete: if false; // Cleaned up via Cloud Function auth onDelete trigger
 
-      // Medicines subcollection
+      // Medicines subcollection (enforces rate-limiting check)
       match /medicines/{medicineId} {
         allow read: if isVerifiedUser(userId);
-        allow create: if isVerifiedUser(userId) && isValidMedicine(request.resource.data, medicineId, userId);
-        allow update: if isVerifiedUser(userId) && isMedicineUpdateValid(medicineId, userId);
-        allow delete: if isVerifiedUser(userId);
+        allow create: if isVerifiedUser(userId) && isNotRateLimited(userId) && isValidMedicine(request.resource.data, medicineId, userId);
+        allow update: if isVerifiedUser(userId) && isNotRateLimited(userId) && isMedicineUpdateValid(medicineId, userId);
+        allow delete: if isVerifiedUser(userId) && isNotRateLimited(userId);
       }
 
-      // History subcollection
+      // History subcollection (enforces rate-limiting check)
       match /history/{historyId} {
         allow read: if isVerifiedUser(userId);
-        allow create: if isVerifiedUser(userId) && isValidHistory(request.resource.data, historyId, userId);
-        allow update: if isVerifiedUser(userId) && isHistoryUpdateValid(historyId, userId);
-        allow delete: if isVerifiedUser(userId);
+        allow create: if isVerifiedUser(userId) && isNotRateLimited(userId) && isValidHistory(request.resource.data, historyId, userId);
+        allow update: if isVerifiedUser(userId) && isNotRateLimited(userId) && isHistoryUpdateValid(historyId, userId);
+        allow delete: if isVerifiedUser(userId) && isNotRateLimited(userId);
+      }
+
+      // Usage tracking subcollection (internal to Cloud Functions, deny all client access)
+      match /usage/{usageId} {
+        allow read, write: if false;
       }
     }
   }
