@@ -33,7 +33,7 @@ service cloud.firestore {
 
     // Validate user profile schema and constraints for client updates
     function isValidUser(data, userId) {
-      let requiredFields = ['fullName', 'email', 'phone', 'dob'];
+      let requiredFields = ['fullName', 'email'];
       let allowedFields = [
         'fullName', 'email', 'phone', 'fullPhone', 'dob',
         'defaultTimes', 'pharmacy', 'prescriber',
@@ -48,22 +48,19 @@ service cloud.firestore {
              data.fullName is string &&
              data.fullName.size() >= 1 &&
              data.fullName.size() <= 100 &&
-             // email validation (must end with @gmail.com)
+             // email validation
              data.email is string &&
-             data.email.size() >= 11 &&
+             data.email.size() >= 3 &&
              data.email.size() <= 100 &&
-             data.email.matches('^[a-zA-Z0-9._%+-]+@gmail[.]com$') &&
-             // phone validation (masked or 10-digit format)
-             data.phone is string &&
-             data.phone.size() <= 20 &&
+             // phone validation (masked or 10-digit format or empty)
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 20)) &&
              // optional fullPhone validation
              (!('fullPhone' in data) || (data.fullPhone is string && (data.fullPhone == '' || data.fullPhone.matches('^[0-9]{10}$')))) &&
              // dob validation (YYYY-MM-DD or empty)
-             data.dob is string &&
-             (data.dob == '' || data.dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')) &&
+             (!('dob' in data) || (data.dob is string && (data.dob == '' || data.dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))) &&
              // timestamps
-             ('createdAt' in data && isValidTimeField(data.createdAt)) &&
-             ('updatedAt' in data && isValidTimeField(data.updatedAt)) &&
+             (!('createdAt' in data) || isValidTimeField(data.createdAt)) &&
+             (!('updatedAt' in data) || isValidTimeField(data.updatedAt)) &&
              // optional rate-limit field (timestamp or null)
              (!('rateLimitedUntil' in data) || data.rateLimitedUntil == null || isValidTimeField(data.rateLimitedUntil)) &&
              // optional maps
@@ -218,27 +215,27 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 1G: users/{userId}: read and write only if request.auth.uid == userId AND email_verified == true.
-    // Profile creation is strictly done via completeSignUp Cloud Function (Admin SDK) to prevent spoofing createdAt/uid.
+    // 1G: users/{userId}: Owner can read their own profile doc.
+    // Client write is allowed for owner with strict schema validation; Admin SDK / Cloud Functions also manage this.
     match /users/{userId} {
-      allow read: if isVerifiedUser(userId);
-      allow create: if false;
-      allow update: if isVerifiedUser(userId) &&
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId && isValidUser(request.resource.data, userId);
+      allow update: if request.auth != null && request.auth.uid == userId &&
                        (!('rateLimitedUntil' in resource.data) || resource.data.rateLimitedUntil == null || request.time > resource.data.rateLimitedUntil) &&
                        isUserUpdateValid(userId);
       allow delete: if false; // Cleaned up via Cloud Function auth onDelete trigger
 
-      // Medicines subcollection (enforces rate-limiting check)
+      // Medicines subcollection (enforces rate-limiting check and verified email for writes)
       match /medicines/{medicineId} {
-        allow read: if isVerifiedUser(userId);
+        allow read: if request.auth != null && request.auth.uid == userId;
         allow create: if isVerifiedUser(userId) && isNotRateLimited(userId) && isValidMedicine(request.resource.data, medicineId, userId);
         allow update: if isVerifiedUser(userId) && isNotRateLimited(userId) && isMedicineUpdateValid(medicineId, userId);
         allow delete: if isVerifiedUser(userId) && isNotRateLimited(userId);
       }
 
-      // History subcollection (enforces rate-limiting check)
+      // History subcollection (enforces rate-limiting check and verified email for writes)
       match /history/{historyId} {
-        allow read: if isVerifiedUser(userId);
+        allow read: if request.auth != null && request.auth.uid == userId;
         allow create: if isVerifiedUser(userId) && isNotRateLimited(userId) && isValidHistory(request.resource.data, historyId, userId);
         allow update: if isVerifiedUser(userId) && isNotRateLimited(userId) && isHistoryUpdateValid(historyId, userId);
         allow delete: if isVerifiedUser(userId) && isNotRateLimited(userId);

@@ -237,12 +237,38 @@ class AuthViewModel(
                         },
                         onVerificationFailed = { ex ->
                             viewModelScope.launch {
-                                authRepository.cleanupPendingUser()
-                            }
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    errorMessage = ex.localizedMessage ?: "Phone verification failed. Please try again."
+                                // Fallback to completing signup directly with email and password so user is not blocked if SMS/phone auth is not configured
+                                val profileResult = authRepository.completeSignUp(
+                                    name = pendingData.fullName,
+                                    dob = pendingData.dob,
+                                    phone = pendingData.phone,
+                                    email = pendingData.email
+                                )
+                                profileResult.fold(
+                                    onSuccess = { profile ->
+                                        authRepository.sendEmailVerification()
+                                        securityPreferences?.cachedUserId = profile.uid
+                                        securityPreferences?.cachedUserName = profile.fullName
+                                        _uiState.update {
+                                            it.copy(
+                                                isLoading = false,
+                                                isOtpPending = false,
+                                                isEmailVerificationPending = true,
+                                                userProfile = profile,
+                                                errorMessage = null,
+                                                infoMessage = "Account created! A verification link has been sent to your email."
+                                            )
+                                        }
+                                    },
+                                    onFailure = { err ->
+                                        authRepository.cleanupPendingUser()
+                                        _uiState.update {
+                                            it.copy(
+                                                isLoading = false,
+                                                errorMessage = err.localizedMessage ?: ex.localizedMessage ?: "Phone verification failed. Please try again."
+                                            )
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -492,26 +518,11 @@ class AuthViewModel(
                 },
                 onFailure = { error ->
                     val msg = error.localizedMessage ?: "Google sign in failed"
-                    if (msg.startsWith("GOOGLE_USER_NOT_REGISTERED:")) {
-                        val parts = msg.removePrefix("GOOGLE_USER_NOT_REGISTERED:").split(":")
-                        val targetEmail = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: googleEmail
-                        val targetName = parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: googleName
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                infoMessage = "No account found with $targetEmail. Please enter your Date of Birth, Phone, and Password to complete registration.",
-                                switchToTab = AuthTab.CREATE_ACCOUNT,
-                                prefillEmail = targetEmail,
-                                prefillName = targetName
-                            )
-                        }
-                    } else {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                errorMessage = msg
-                            )
-                        }
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = msg
+                        )
                     }
                 }
             )

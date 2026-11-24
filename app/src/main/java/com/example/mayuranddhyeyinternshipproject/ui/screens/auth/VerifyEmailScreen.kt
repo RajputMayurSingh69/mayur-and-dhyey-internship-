@@ -69,8 +69,8 @@ fun VerifyEmailScreen(
         }
     }
 
-    LaunchedEffect(uiState.isSuccess) {
-        if (uiState.isSuccess && authViewModel.isEmailVerified()) {
+    LaunchedEffect(uiState.isSuccess, uiState.isEmailVerificationPending) {
+        if (authViewModel.isEmailVerified()) {
             onVerified()
         }
     }

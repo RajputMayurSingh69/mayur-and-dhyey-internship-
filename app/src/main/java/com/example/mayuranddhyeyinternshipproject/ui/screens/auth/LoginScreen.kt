@@ -202,22 +202,16 @@ fun LoginScreen(
                 val email = account?.email ?: ""
                 val name = account?.displayName ?: ""
 
-                if (selectedTab == AuthTab.CREATE_ACCOUNT) {
-                    if (email.isNotBlank()) {
-                        authViewModel.handleGoogleInCreateAccount(email, name)
-                    } else {
-                        authViewModel.setErrorMessage("Could not retrieve email from Google account.")
-                    }
+                if (idToken != null) {
+                    val credential = GoogleAuthProvider.getCredential(idToken, null)
+                    authViewModel.signInWithGoogle(credential, googleEmail = email, googleName = name)
+                } else if (email.isNotBlank()) {
+                    authViewModel.handleGoogleInCreateAccount(email, name)
                 } else {
-                    if (idToken != null) {
-                        val credential = GoogleAuthProvider.getCredential(idToken, null)
-                        authViewModel.signInWithGoogle(credential, googleEmail = email, googleName = name)
-                    } else {
-                        account?.email?.let { unverifiedEmail ->
-                            authViewModel.setErrorMessage("Google account ($unverifiedEmail) selected. Please ensure Google Provider & Web Client ID are enabled in Firebase Console.")
-                        } ?: run {
-                            authViewModel.setErrorMessage("Google Sign-In requires SHA-1 fingerprint configured in Firebase Console.")
-                        }
+                    account?.email?.let { unverifiedEmail ->
+                        authViewModel.setErrorMessage("Google account ($unverifiedEmail) selected. Please ensure Google Provider & Web Client ID are enabled in Firebase Console.")
+                    } ?: run {
+                        authViewModel.setErrorMessage("Google Sign-In requires SHA-1 fingerprint configured in Firebase Console.")
                     }
                 }
             } catch (e: Exception) {

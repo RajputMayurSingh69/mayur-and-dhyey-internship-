@@ -58,10 +58,17 @@ fun SplashScreen(
     onNavigateToVerifyEmail: () -> Unit = {},
     onNavigateToLogin: () -> Unit
 ) {
+    val authRepository = androidx.compose.runtime.remember { com.example.mayuranddhyeyinternshipproject.data.repository.AuthRepository() }
+
     LaunchedEffect(Unit) {
-        delay(2500)
-        if (isUserLoggedIn) {
-            if (isEmailVerified) {
+        if (authRepository.isUserLoggedIn()) {
+            try {
+                authRepository.reloadUser()
+            } catch (ignored: Exception) {}
+        }
+        delay(2200)
+        if (authRepository.isUserLoggedIn()) {
+            if (authRepository.isEmailVerified()) {
                 onNavigateToHome()
             } else {
                 onNavigateToVerifyEmail()
