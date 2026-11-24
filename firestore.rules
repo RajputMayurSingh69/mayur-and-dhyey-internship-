@@ -84,10 +84,10 @@ service cloud.firestore {
     // Validate user profile update (protects immutable fields createdAt, uid, and rateLimitedUntil)
     function isUserUpdateValid(userId) {
       return isValidUser(request.resource.data, userId) &&
-             (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt) &&
+             (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt || (resource.data.createdAt is timestamp && request.resource.data.createdAt is number)) &&
              (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid) &&
              (!('id' in resource.data) || request.resource.data.id == resource.data.id) &&
-             (!('rateLimitedUntil' in resource.data) || request.resource.data.rateLimitedUntil == resource.data.rateLimitedUntil);
+             (!('rateLimitedUntil' in resource.data) ? (!('rateLimitedUntil' in request.resource.data) || request.resource.data.rateLimitedUntil == null) : request.resource.data.rateLimitedUntil == resource.data.rateLimitedUntil);
     }
 
     // Validate medicine document schema and constraints

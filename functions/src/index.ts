@@ -116,8 +116,8 @@ export const completeSignUp = onCall(
       pharmacyAddress: "",
       doctorName: "",
       doctorContact: "",
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     };
 
     try {
@@ -248,7 +248,7 @@ export const updatePhone = onCall(
         transaction.update(userRef, {
           phone: maskedPhone,
           fullPhone: cleanNewPhone,
-          updatedAt: FieldValue.serverTimestamp()
+          updatedAt: Date.now()
         });
       });
 

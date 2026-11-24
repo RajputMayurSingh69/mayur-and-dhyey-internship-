@@ -1,6 +1,7 @@
 package com.example.mayuranddhyeyinternshipproject.data.model
 
 import androidx.annotation.Keep
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.IgnoreExtraProperties
 
 /**
@@ -27,7 +28,7 @@ data class UserProfile(
     val pharmacyAddress: String = "",
     val doctorName: String = "",
     val doctorContact: String = "",
-    val rateLimitedUntil: Long? = null,
+    val rateLimitedUntil: Timestamp? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
