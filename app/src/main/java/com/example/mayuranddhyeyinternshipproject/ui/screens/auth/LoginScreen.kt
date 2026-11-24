@@ -162,10 +162,21 @@ fun LoginScreen(
     fun startGoogleSignIn() {
         authViewModel.clearError()
         try {
-            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            val webClientId = try {
+                val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+                if (resId != 0) context.getString(resId) else null
+            } catch (e: Exception) {
+                null
+            }
+
+            val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestEmail()
-                .build()
-            val client = GoogleSignIn.getClient(context, gso)
+
+            if (!webClientId.isNullOrBlank()) {
+                gsoBuilder.requestIdToken(webClientId)
+            }
+
+            val client = GoogleSignIn.getClient(context, gsoBuilder.build())
             googleSignInLauncher.launch(client.signInIntent)
         } catch (e: Exception) {
             authViewModel.setErrorMessage("Google Sign-In is unavailable on this device.")
