@@ -518,11 +518,26 @@ class AuthViewModel(
                 },
                 onFailure = { error ->
                     val msg = error.localizedMessage ?: "Google sign in failed"
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            errorMessage = msg
-                        )
+                    if (msg.startsWith("GOOGLE_USER_NOT_REGISTERED:")) {
+                        val parts = msg.removePrefix("GOOGLE_USER_NOT_REGISTERED:").split(":")
+                        val targetEmail = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: googleEmail
+                        val targetName = parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: googleName
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = "No account found with this email. Please fill in all details below to create an account.",
+                                switchToTab = AuthTab.CREATE_ACCOUNT,
+                                prefillEmail = targetEmail,
+                                prefillName = targetName
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                errorMessage = msg
+                            )
+                        }
                     }
                 }
             )

@@ -408,6 +408,11 @@ class AuthRepository(
     /**
      * Signs in using a Google AuthCredential on the Sign In tab.
      */
+    /**
+     * Signs in using a Google AuthCredential on the Sign In tab.
+     * Verifies if the user is already registered in Firebase.
+     * If not registered, signs out and returns GOOGLE_USER_NOT_REGISTERED.
+     */
     suspend fun signInWithGoogleCredential(
         credential: AuthCredential,
         googleEmail: String = "",
@@ -418,30 +423,28 @@ class AuthRepository(
             val user = authResult.user
                 ?: return Result.failure(IllegalStateException("Google sign in failed. Please try again."))
 
+            val isNewUser = authResult.additionalUserInfo?.isNewUser == true
             val docRef = firestore.collection("users").document(user.uid)
-            val existing = try {
-                val doc = docRef.get().await()
-                doc.toObject(UserProfile::class.java)
+            val doc = try {
+                docRef.get().await()
             } catch (e: Exception) {
                 null
             }
+            val existing = doc?.toObject(UserProfile::class.java)
 
-            if (existing != null) {
+            // User is already registered only if it's NOT a brand new auth user AND their profile exists in Firestore
+            if (!isNewUser && existing != null) {
                 Result.success(existing)
             } else {
+                // Not registered in Firebase yet!
+                if (isNewUser) {
+                    try { user.delete().await() } catch (e: Exception) { auth.signOut() }
+                } else {
+                    auth.signOut()
+                }
                 val resolvedEmail = user.email?.takeIf { it.isNotBlank() } ?: googleEmail
-                val resolvedName = user.displayName?.takeIf { it.isNotBlank() } ?: googleName.takeIf { it.isNotBlank() } ?: "User"
-                val newProfile = UserProfile(
-                    uid = user.uid,
-                    fullName = resolvedName,
-                    email = resolvedEmail,
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis()
-                )
-                try {
-                    docRef.set(newProfile).await()
-                } catch (ignored: Exception) {}
-                Result.success(newProfile)
+                val resolvedName = user.displayName?.takeIf { it.isNotBlank() } ?: googleName
+                Result.failure(IllegalStateException("GOOGLE_USER_NOT_REGISTERED:$resolvedEmail:$resolvedName"))
             }
         } catch (e: Exception) {
             Result.failure(IllegalStateException(mapAuthError(e)))

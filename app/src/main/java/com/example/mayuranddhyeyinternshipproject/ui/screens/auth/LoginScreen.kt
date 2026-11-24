@@ -202,16 +202,29 @@ fun LoginScreen(
                 val email = account?.email ?: ""
                 val name = account?.displayName ?: ""
 
-                if (idToken != null) {
-                    val credential = GoogleAuthProvider.getCredential(idToken, null)
-                    authViewModel.signInWithGoogle(credential, googleEmail = email, googleName = name)
-                } else if (email.isNotBlank()) {
-                    authViewModel.handleGoogleInCreateAccount(email, name)
+                if (selectedTab == AuthTab.CREATE_ACCOUNT) {
+                    // On Create Account tab, direct Google login is NOT allowed.
+                    // Prefill email and name if available, and prompt user to fill all required details first.
+                    if (email.isNotBlank()) {
+                        signUpEmail = email
+                        emailError = null
+                    }
+                    if (name.isNotBlank()) {
+                        signUpFullName = name
+                        nameError = null
+                    }
+                    authViewModel.setErrorMessage("Please fill in all details first to create an account.")
                 } else {
-                    account?.email?.let { unverifiedEmail ->
-                        authViewModel.setErrorMessage("Google account ($unverifiedEmail) selected. Please ensure Google Provider & Web Client ID are enabled in Firebase Console.")
-                    } ?: run {
-                        authViewModel.setErrorMessage("Google Sign-In requires SHA-1 fingerprint configured in Firebase Console.")
+                    // On Sign In tab, check Firebase for existing registration
+                    if (idToken != null) {
+                        val credential = GoogleAuthProvider.getCredential(idToken, null)
+                        authViewModel.signInWithGoogle(credential, googleEmail = email, googleName = name)
+                    } else {
+                        account?.email?.let { unverifiedEmail ->
+                            authViewModel.setErrorMessage("Google account ($unverifiedEmail) selected. Please ensure Google Provider & Web Client ID are enabled in Firebase Console.")
+                        } ?: run {
+                            authViewModel.setErrorMessage("Google Sign-In requires SHA-1 fingerprint configured in Firebase Console.")
+                        }
                     }
                 }
             } catch (e: Exception) {
