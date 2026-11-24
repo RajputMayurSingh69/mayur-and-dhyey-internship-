@@ -35,8 +35,8 @@ fun MedMateNavGraph(
     navController: NavHostController,
     isDarkMode: Boolean,
     onToggleDarkMode: (Boolean) -> Unit,
-    isScreenPrivacy: Boolean,
-    onToggleScreenPrivacy: (Boolean) -> Unit,
+    isScreenPrivacy: Boolean = false,
+    onToggleScreenPrivacy: (Boolean) -> Unit = {},
     onExitApp: () -> Unit
 ) {
     val authRepository = AuthRepository()
@@ -213,8 +213,6 @@ fun MedMateNavGraph(
             SettingsScreen(
                 isDarkMode = isDarkMode,
                 onToggleDarkMode = onToggleDarkMode,
-                isScreenPrivacy = isScreenPrivacy,
-                onToggleScreenPrivacy = onToggleScreenPrivacy,
                 onNavigateToTerms = { navController.navigate(Screen.Terms.route) },
                 onNavigateToPrivacy = { navController.navigate(Screen.PrivacyPolicy.route) },
                 onNavigateBack = { navController.popBackStack() },

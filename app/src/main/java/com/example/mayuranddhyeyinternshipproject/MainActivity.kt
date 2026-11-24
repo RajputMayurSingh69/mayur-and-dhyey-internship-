@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
@@ -12,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.core.view.WindowCompat
 import androidx.navigation.compose.rememberNavController
 import com.example.mayuranddhyeyinternshipproject.data.repository.SecurityPreferences
 import com.example.mayuranddhyeyinternshipproject.navigation.MedMateNavGraph
@@ -28,17 +28,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+
+        // Ensure taking screenshots is explicitly allowed throughout the app
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+
+        // Keep system status bar appearance standard/normal (light background with dark icons)
+        window.statusBarColor = android.graphics.Color.WHITE
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+        insetsController.isAppearanceLightStatusBars = true
 
         val securityPreferences = SecurityPreferences(this)
-        applyScreenPrivacy(securityPreferences.isScreenPrivacyEnabled)
 
         setContent {
             var isDarkMode by remember {
                 mutableStateOf(securityPreferences.isDarkMode)
-            }
-            var isScreenPrivacy by remember {
-                mutableStateOf(securityPreferences.isScreenPrivacyEnabled)
             }
 
             MedMateTheme(darkTheme = isDarkMode) {
@@ -52,29 +56,12 @@ class MainActivity : ComponentActivity() {
                             isDarkMode = enabled
                             securityPreferences.isDarkMode = enabled
                         },
-                        isScreenPrivacy = isScreenPrivacy,
-                        onToggleScreenPrivacy = { enabled ->
-                            isScreenPrivacy = enabled
-                            securityPreferences.isScreenPrivacyEnabled = enabled
-                            applyScreenPrivacy(enabled)
-                        },
                         onExitApp = {
                             finish()
                         }
                     )
                 }
             }
-        }
-    }
-
-    private fun applyScreenPrivacy(enabled: Boolean) {
-        if (enabled) {
-            window.setFlags(
-                WindowManager.LayoutParams.FLAG_SECURE,
-                WindowManager.LayoutParams.FLAG_SECURE
-            )
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
     }
 }

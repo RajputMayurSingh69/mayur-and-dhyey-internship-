@@ -62,8 +62,8 @@ import com.example.mayuranddhyeyinternshipproject.ui.theme.TealPrimary
 fun SettingsScreen(
     isDarkMode: Boolean,
     onToggleDarkMode: (Boolean) -> Unit,
-    isScreenPrivacy: Boolean,
-    onToggleScreenPrivacy: (Boolean) -> Unit,
+    isScreenPrivacy: Boolean = false,
+    onToggleScreenPrivacy: (Boolean) -> Unit = {},
     onNavigateToTerms: () -> Unit,
     onNavigateToPrivacy: () -> Unit,
     onNavigateBack: () -> Unit,
@@ -173,16 +173,11 @@ fun SettingsScreen(
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column {
                                         Text(
-                                            text = "Light Mode (Default)",
+                                            text = "Light Mode",
                                             style = MaterialTheme.typography.bodyLarge.copy(
                                                 fontWeight = if (!isDarkMode) FontWeight.Bold else FontWeight.Medium
                                             ),
                                             color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "Soft, eye-friendly light teal theme",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -240,11 +235,6 @@ fun SettingsScreen(
                                             ),
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
-                                        Text(
-                                            text = "Comfortable viewing in low light",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
                                     }
                                 }
                                 RadioButton(
@@ -259,71 +249,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // 2. Security & Screen Privacy Card
-                Text(
-                    text = "Security & Privacy",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                modifier = Modifier.weight(1f),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .background(MintAccent.copy(alpha = 0.25f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Lock,
-                                        contentDescription = null,
-                                        tint = TealPrimary,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(14.dp))
-                                Column {
-                                    Text(
-                                        text = "Screen Privacy",
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "Hides health records in Recent Apps switcher (FLAG_SECURE)",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Switch(
-                                checked = isScreenPrivacy,
-                                onCheckedChange = onToggleScreenPrivacy,
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = TealPrimary
-                                )
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // 3. Legal & Policies Card
+                // Legal & Policies Card
                 Text(
                     text = "Legal & Security",
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),

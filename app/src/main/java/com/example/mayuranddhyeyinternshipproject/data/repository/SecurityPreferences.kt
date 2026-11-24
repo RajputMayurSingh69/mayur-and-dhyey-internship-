@@ -33,7 +33,7 @@ class SecurityPreferences(context: Context) {
         set(value) = prefs.edit().putBoolean(KEY_DARK_MODE, value).apply()
 
     var isScreenPrivacyEnabled: Boolean
-        get() = prefs.getBoolean(KEY_SCREEN_PRIVACY, true) // Enabled by default for health data privacy
+        get() = prefs.getBoolean(KEY_SCREEN_PRIVACY, false)
         set(value) = prefs.edit().putBoolean(KEY_SCREEN_PRIVACY, value).apply()
 
     var cachedUserId: String?
