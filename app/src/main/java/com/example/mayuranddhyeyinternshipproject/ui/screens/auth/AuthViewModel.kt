@@ -71,29 +71,16 @@ class AuthViewModel(
                     securityPreferences?.cachedUserId = profile.uid
                     securityPreferences?.cachedUserName = profile.fullName
 
-                    if (authRepository.isEmailVerified()) {
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                isSuccess = true,
-                                userProfile = profile,
-                                pendingGoogleCredential = null,
-                                errorMessage = null,
-                                infoMessage = null
-                            )
-                        }
-                    } else {
-                        // User signed in but email is not verified yet
-                        _uiState.update {
-                            it.copy(
-                                isLoading = false,
-                                isEmailVerificationPending = true,
-                                userProfile = profile,
-                                pendingGoogleCredential = null,
-                                errorMessage = null,
-                                infoMessage = null
-                            )
-                        }
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            isSuccess = true,
+                            isEmailVerificationPending = false,
+                            userProfile = profile,
+                            pendingGoogleCredential = null,
+                            errorMessage = null,
+                            infoMessage = null
+                        )
                     }
                 },
                 onFailure = { error ->
@@ -170,7 +157,7 @@ class AuthViewModel(
                                     it.copy(
                                         isLoading = false,
                                         isSuccess = true,
-                                        isEmailVerificationPending = true
+                                        isEmailVerificationPending = false
                                     )
                                 }
                             },
@@ -259,10 +246,11 @@ class AuthViewModel(
                                             it.copy(
                                                 isLoading = false,
                                                 isOtpPending = false,
-                                                isEmailVerificationPending = true,
+                                                isSuccess = true,
+                                                isEmailVerificationPending = false,
                                                 userProfile = profile,
                                                 errorMessage = null,
-                                                infoMessage = "Account created! A verification link has been sent to your email."
+                                                infoMessage = null
                                             )
                                         }
                                     },
@@ -336,7 +324,8 @@ class AuthViewModel(
                         it.copy(
                             isLoading = false,
                             isOtpPending = false,
-                            isEmailVerificationPending = true,
+                            isSuccess = true,
+                            isEmailVerificationPending = false,
                             userProfile = profile,
                             errorMessage = null
                         )
@@ -415,23 +404,16 @@ class AuthViewModel(
     fun checkEmailVerification() {
         _uiState.update { it.copy(isLoading = true, errorMessage = null) }
         viewModelScope.launch {
-            val isVerified = authRepository.reloadUser()
-            if (isVerified) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        isEmailVerificationPending = false,
-                        isSuccess = true,
-                        errorMessage = null
-                    )
-                }
-            } else {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        errorMessage = "Email not verified yet. Please click the link sent to your inbox, then tap 'I have verified'."
-                    )
-                }
+            try {
+                authRepository.reloadUser()
+            } catch (ignored: Exception) {}
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    isEmailVerificationPending = false,
+                    isSuccess = true,
+                    errorMessage = null
+                )
             }
         }
     }

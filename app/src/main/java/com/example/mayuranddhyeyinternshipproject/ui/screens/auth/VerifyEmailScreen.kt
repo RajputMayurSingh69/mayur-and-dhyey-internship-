@@ -173,6 +173,7 @@ fun VerifyEmailScreen(
             Button(
                 onClick = {
                     authViewModel.checkEmailVerification()
+                    onVerified()
                 },
                 modifier = Modifier
                     .fillMaxWidth()

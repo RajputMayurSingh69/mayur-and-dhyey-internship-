@@ -68,11 +68,7 @@ fun SplashScreen(
         }
         delay(2200)
         if (authRepository.isUserLoggedIn()) {
-            if (authRepository.isEmailVerified()) {
-                onNavigateToHome()
-            } else {
-                onNavigateToVerifyEmail()
-            }
+            onNavigateToHome()
         } else {
             onNavigateToLogin()
         }

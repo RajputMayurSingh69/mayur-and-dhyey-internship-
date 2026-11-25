@@ -176,17 +176,11 @@ fun LoginScreen(
         }
     }
 
-    // Navigation on Success or Email Verification Required (Phase 2B)
+    // Navigation on Success or Email Verification Required
     LaunchedEffect(uiState.isSuccess, uiState.isEmailVerificationPending) {
-        if (uiState.isEmailVerificationPending) {
-            onNavigateToVerifyEmail()
-        } else if (uiState.isSuccess) {
-            if (authViewModel.isGoogleUser() || authViewModel.isEmailVerified()) {
-                authViewModel.resetState()
-                onNavigateToHome()
-            } else {
-                onNavigateToVerifyEmail()
-            }
+        if (uiState.isSuccess || uiState.isEmailVerificationPending) {
+            authViewModel.resetState()
+            onNavigateToHome()
         }
     }
 
