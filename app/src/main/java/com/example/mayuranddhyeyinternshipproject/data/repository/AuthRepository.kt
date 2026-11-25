@@ -411,19 +411,34 @@ class AuthRepository(
     /**
      * Signs in using a Google AuthCredential on the Sign In tab.
      * Verifies if the user is already registered in Firebase.
-     * If not registered, signs out and returns GOOGLE_USER_NOT_REGISTERED.
+     * If not registered, returns GOOGLE_USER_NOT_REGISTERED to prompt registration.
      */
     suspend fun signInWithGoogleCredential(
         credential: AuthCredential,
         googleEmail: String = "",
         googleName: String = ""
     ): Result<UserProfile> {
+        val cleanEmail = (googleEmail.takeIf { it.isNotBlank() } ?: "").trim().lowercase(Locale.ROOT)
+
+        // 1. Check if this email is already registered in Firebase Authentication
+        val existingMethods = try {
+            if (cleanEmail.isNotBlank()) {
+                auth.fetchSignInMethodsForEmail(cleanEmail).await().signInMethods
+            } else null
+        } catch (e: Exception) {
+            null
+        }
+
+        // If email was checked and has NO registered sign-in methods in Firebase -> Not registered!
+        if (cleanEmail.isNotBlank() && existingMethods != null && existingMethods.isEmpty()) {
+            return Result.failure(IllegalStateException("GOOGLE_USER_NOT_REGISTERED:$cleanEmail:$googleName"))
+        }
+
         return try {
             val authResult = auth.signInWithCredential(credential).await()
             val user = authResult.user
                 ?: return Result.failure(IllegalStateException("Google sign in failed. Please try again."))
 
-            val isNewUser = authResult.additionalUserInfo?.isNewUser == true
             val docRef = firestore.collection("users").document(user.uid)
             val doc = try {
                 docRef.get().await()
@@ -432,20 +447,26 @@ class AuthRepository(
             }
             val existing = doc?.toObject(UserProfile::class.java)
 
-            // User is already registered only if it's NOT a brand new auth user AND their profile exists in Firestore
-            if (!isNewUser && existing != null) {
+            if (existing != null) {
                 Result.success(existing)
             } else {
-                // Not registered in Firebase yet!
-                if (isNewUser) {
-                    try { user.delete().await() } catch (e: Exception) { auth.signOut() }
-                } else {
-                    auth.signOut()
-                }
-                val resolvedEmail = user.email?.takeIf { it.isNotBlank() } ?: googleEmail
-                val resolvedName = user.displayName?.takeIf { it.isNotBlank() } ?: googleName
-                Result.failure(IllegalStateException("GOOGLE_USER_NOT_REGISTERED:$resolvedEmail:$resolvedName"))
+                // User is registered in Auth (e.g. via password or Google). Ensure user profile exists in Firestore:
+                val resolvedEmail = user.email?.takeIf { it.isNotBlank() } ?: cleanEmail
+                val resolvedName = user.displayName?.takeIf { it.isNotBlank() } ?: googleName.takeIf { it.isNotBlank() } ?: "User"
+                val profile = UserProfile(
+                    uid = user.uid,
+                    fullName = resolvedName,
+                    email = resolvedEmail,
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
+                try {
+                    docRef.set(profile).await()
+                } catch (ignored: Exception) {}
+                Result.success(profile)
             }
+        } catch (e: FirebaseAuthUserCollisionException) {
+            Result.failure(IllegalStateException("ACCOUNT_EXISTS_WITH_PASSWORD:$cleanEmail"))
         } catch (e: Exception) {
             Result.failure(IllegalStateException(mapAuthError(e)))
         }
