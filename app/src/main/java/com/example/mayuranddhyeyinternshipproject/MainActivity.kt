@@ -32,11 +32,7 @@ class MainActivity : ComponentActivity() {
         // Ensure taking screenshots is explicitly allowed throughout the app
         window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
-        // Keep system status bar appearance standard/normal (light background with dark icons)
-        window.statusBarColor = android.graphics.Color.WHITE
         WindowCompat.setDecorFitsSystemWindows(window, true)
-        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-        insetsController.isAppearanceLightStatusBars = true
 
         val securityPreferences = SecurityPreferences(this)
 
