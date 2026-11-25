@@ -53,6 +53,8 @@ class AuthViewModel(
 
     fun isEmailVerified(): Boolean = authRepository.isEmailVerified()
 
+    fun isGoogleUser(): Boolean = authRepository.currentUser?.providerData?.any { it.providerId == "google.com" } == true
+
     fun getCurrentUserId(): String? = authRepository.getCurrentUserId()
 
     /**

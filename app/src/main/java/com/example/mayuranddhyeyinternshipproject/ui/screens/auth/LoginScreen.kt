@@ -181,7 +181,7 @@ fun LoginScreen(
         if (uiState.isEmailVerificationPending) {
             onNavigateToVerifyEmail()
         } else if (uiState.isSuccess) {
-            if (authViewModel.isEmailVerified()) {
+            if (authViewModel.isGoogleUser() || authViewModel.isEmailVerified()) {
                 authViewModel.resetState()
                 onNavigateToHome()
             } else {
@@ -194,42 +194,47 @@ fun LoginScreen(
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            try {
-                val account = task.getResult(ApiException::class.java)
-                val idToken = account?.idToken
-                val email = account?.email ?: ""
-                val name = account?.displayName ?: ""
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            val idToken = account?.idToken
+            val email = account?.email ?: ""
+            val name = account?.displayName ?: ""
 
-                if (selectedTab == AuthTab.CREATE_ACCOUNT) {
-                    // On Create Account tab, direct Google login is NOT allowed.
-                    // Prefill email and name if available, and prompt user to fill all required details first.
-                    if (email.isNotBlank()) {
-                        signUpEmail = email
-                        emailError = null
-                    }
-                    if (name.isNotBlank()) {
-                        signUpFullName = name
-                        nameError = null
-                    }
-                    authViewModel.setErrorMessage("Please fill in all details first to create an account.")
+            if (selectedTab == AuthTab.CREATE_ACCOUNT) {
+                // On Create Account tab, direct Google login is NOT allowed.
+                // Prefill email and name if available, and prompt user to fill all required details first.
+                if (email.isNotBlank()) {
+                    signUpEmail = email
+                    emailError = null
+                }
+                if (name.isNotBlank()) {
+                    signUpFullName = name
+                    nameError = null
+                }
+                authViewModel.setErrorMessage("Please fill in all details first to create an account.")
+            } else {
+                // On Sign In tab, sign in with Google credential
+                if (idToken != null) {
+                    val credential = GoogleAuthProvider.getCredential(idToken, null)
+                    authViewModel.signInWithGoogle(credential, googleEmail = email, googleName = name)
                 } else {
-                    // On Sign In tab, check Firebase for existing registration
-                    if (idToken != null) {
-                        val credential = GoogleAuthProvider.getCredential(idToken, null)
-                        authViewModel.signInWithGoogle(credential, googleEmail = email, googleName = name)
-                    } else {
-                        account?.email?.let { unverifiedEmail ->
-                            authViewModel.setErrorMessage("Google account ($unverifiedEmail) selected. Please ensure Google Provider & Web Client ID are enabled in Firebase Console.")
-                        } ?: run {
-                            authViewModel.setErrorMessage("Google Sign-In requires SHA-1 fingerprint configured in Firebase Console.")
-                        }
+                    account?.email?.let { unverifiedEmail ->
+                        authViewModel.setErrorMessage("Google account ($unverifiedEmail) selected. Please ensure Google Provider & Web Client ID are enabled in Firebase Console.")
+                    } ?: run {
+                        authViewModel.setErrorMessage("Google Sign-In requires SHA-1 fingerprint configured in Firebase Console.")
                     }
                 }
-            } catch (e: Exception) {
-                authViewModel.setErrorMessage(e.localizedMessage ?: "Google sign in was cancelled or failed.")
             }
+        } catch (e: ApiException) {
+            val msg = when (e.statusCode) {
+                10 -> "Google Sign-In error (code 10: Developer Error). Please ensure the device SHA-1 fingerprint is added in Firebase Console."
+                12500 -> "Google Sign-In error (code 12500). Please check Google Play Services on this device."
+                else -> e.localizedMessage ?: "Google sign in failed (code ${e.statusCode})."
+            }
+            authViewModel.setErrorMessage(msg)
+        } catch (e: Exception) {
+            authViewModel.setErrorMessage(e.localizedMessage ?: "Google sign in was cancelled or failed.")
         }
     }
 

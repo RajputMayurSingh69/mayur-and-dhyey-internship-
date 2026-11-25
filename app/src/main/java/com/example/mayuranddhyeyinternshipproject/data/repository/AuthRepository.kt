@@ -462,34 +462,48 @@ class AuthRepository(
                     } catch (ignored: Exception) {}
                 }
 
-                if (existingProfileByEmail != null) {
-                    // Profile found! Link this Google user with their existing profile data
-                    val linkedProfile = existingProfileByEmail.copy(
+                val profile = if (existingProfileByEmail != null) {
+                    val linked = existingProfileByEmail.copy(
                         uid = user.uid,
                         updatedAt = System.currentTimeMillis()
                     )
-                    try {
-                        docRef.set(linkedProfile).await()
-                    } catch (ignored: Exception) {}
-                    Result.success(linkedProfile)
-                } else if (authResult.additionalUserInfo?.isNewUser == true) {
-                    // Completely new user who has never created an account on MedMate
-                    try { user.delete().await() } catch (e: Exception) { auth.signOut() }
-                    Result.failure(IllegalStateException("GOOGLE_USER_NOT_REGISTERED:$resolvedEmail:$resolvedName"))
+                    // If previous registration was under a different UID (e.g. password auth), migrate medicines and history
+                    val oldUid = existingProfileByEmail.uid
+                    if (oldUid.isNotBlank() && oldUid != user.uid) {
+                        try {
+                            val oldMeds = firestore.collection("users").document(oldUid).collection("medicines").get().await()
+                            for (m in oldMeds.documents) {
+                                val d = m.data?.toMutableMap() ?: continue
+                                d["userId"] = user.uid
+                                d["uid"] = user.uid
+                                docRef.collection("medicines").document(m.id).set(d).await()
+                            }
+                        } catch (ignored: Exception) {}
+                        try {
+                            val oldHist = firestore.collection("users").document(oldUid).collection("history").get().await()
+                            for (h in oldHist.documents) {
+                                val d = h.data?.toMutableMap() ?: continue
+                                d["userId"] = user.uid
+                                d["uid"] = user.uid
+                                docRef.collection("history").document(h.id).set(d).await()
+                            }
+                        } catch (ignored: Exception) {}
+                    }
+                    linked
                 } else {
-                    // Returning existing Google user whose profile was missing
-                    val profile = UserProfile(
+                    UserProfile(
                         uid = user.uid,
                         fullName = resolvedName,
                         email = resolvedEmail,
                         createdAt = System.currentTimeMillis(),
                         updatedAt = System.currentTimeMillis()
                     )
-                    try {
-                        docRef.set(profile).await()
-                    } catch (ignored: Exception) {}
-                    Result.success(profile)
                 }
+
+                try {
+                    docRef.set(profile).await()
+                } catch (ignored: Exception) {}
+                Result.success(profile)
             }
         } catch (e: FirebaseAuthUserCollisionException) {
             Result.failure(IllegalStateException("ACCOUNT_EXISTS_WITH_PASSWORD:$cleanEmail"))
