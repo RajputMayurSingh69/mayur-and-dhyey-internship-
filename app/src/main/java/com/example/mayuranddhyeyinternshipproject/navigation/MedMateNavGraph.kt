@@ -62,7 +62,7 @@ fun MedMateNavGraph(
                     }
                 },
                 onNavigateToVerifyEmail = {
-                    navController.navigate(Screen.Home.route) {
+                    navController.navigate(Screen.VerifyEmail.route) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
                 },

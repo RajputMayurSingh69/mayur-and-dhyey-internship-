@@ -41,7 +41,11 @@ class AuthRepository(
 
     fun isUserLoggedIn(): Boolean = auth.currentUser != null
 
-    fun isEmailVerified(): Boolean = auth.currentUser?.isEmailVerified == true
+    fun isEmailVerified(): Boolean {
+        val user = auth.currentUser ?: return false
+        if (user.isEmailVerified) return true
+        return user.providerData.any { it.providerId == "google.com" }
+    }
 
     fun getCurrentUserId(): String? = auth.currentUser?.uid
 
@@ -368,7 +372,7 @@ class AuthRepository(
     suspend fun reloadUser(): Boolean {
         return try {
             auth.currentUser?.reload()?.await()
-            auth.currentUser?.isEmailVerified == true
+            isEmailVerified()
         } catch (e: Exception) {
             false
         }

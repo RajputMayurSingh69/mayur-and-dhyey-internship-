@@ -69,8 +69,8 @@ fun VerifyEmailScreen(
         }
     }
 
-    LaunchedEffect(uiState.isSuccess, uiState.isEmailVerificationPending) {
-        if (authViewModel.isEmailVerified()) {
+    LaunchedEffect(uiState.isSuccess) {
+        if (uiState.isSuccess && authViewModel.isEmailVerified()) {
             onVerified()
         }
     }
@@ -172,8 +172,7 @@ fun VerifyEmailScreen(
             // "I have verified" button
             Button(
                 onClick = {
-                    authViewModel.checkEmailVerification()
-                    onVerified()
+                    authViewModel.checkEmailVerification(onSuccess = onVerified)
                 },
                 modifier = Modifier
                     .fillMaxWidth()
