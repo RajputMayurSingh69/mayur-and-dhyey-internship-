@@ -215,6 +215,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Direct lookup index by email for fast account existence verification during sign in
+    match /users_by_email/{email} {
+      allow read, write: if request.auth != null;
+    }
+
     // 1G: users/{userId}: Owner can read their own profile doc.
     // Client write is allowed for owner with strict schema validation; Admin SDK / Cloud Functions also manage this.
     match /users/{userId} {

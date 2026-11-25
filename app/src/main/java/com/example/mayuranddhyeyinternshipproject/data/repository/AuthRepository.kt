@@ -237,6 +237,19 @@ class AuthRepository(
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis()
             )
+            try {
+                firestore.collection("users_by_email").document(cleanEmail).set(
+                    mapOf(
+                        "uid" to user.uid,
+                        "fullName" to cleanName,
+                        "email" to cleanEmail,
+                        "phone" to maskedPhone,
+                        "fullPhone" to cleanPhone,
+                        "dob" to cleanDob,
+                        "createdAt" to System.currentTimeMillis()
+                    )
+                ).await()
+            } catch (ignored: Exception) {}
             Result.success(profile)
         } catch (e: Exception) {
             val msg = e.localizedMessage?.lowercase(Locale.ROOT) ?: ""
@@ -257,6 +270,17 @@ class AuthRepository(
                 )
                 try {
                     firestore.collection("users").document(user.uid).set(profile).await()
+                    firestore.collection("users_by_email").document(cleanEmail).set(
+                        mapOf(
+                            "uid" to user.uid,
+                            "fullName" to cleanName,
+                            "email" to cleanEmail,
+                            "phone" to maskedPhone,
+                            "fullPhone" to cleanPhone,
+                            "dob" to cleanDob,
+                            "createdAt" to System.currentTimeMillis()
+                        )
+                    ).await()
                     Result.success(profile)
                 } catch (fsEx: Exception) {
                     Result.success(profile)
@@ -449,7 +473,31 @@ class AuthRepository(
             } else {
                 // 2. Check if a profile exists for this email under a previous registration (e.g. password signup)
                 var existingProfileByEmail: UserProfile? = null
+
+                // 2A: Check direct document in users_by_email
                 if (resolvedEmail.isNotBlank()) {
+                    try {
+                        val indexDoc = firestore.collection("users_by_email").document(resolvedEmail).get().await()
+                        if (indexDoc.exists()) {
+                            val oldUid = indexDoc.getString("uid") ?: ""
+                            val name = indexDoc.getString("fullName") ?: resolvedName
+                            val phone = indexDoc.getString("phone") ?: ""
+                            val fullPhone = indexDoc.getString("fullPhone") ?: ""
+                            val dob = indexDoc.getString("dob") ?: ""
+                            existingProfileByEmail = UserProfile(
+                                uid = if (oldUid.isNotBlank()) oldUid else user.uid,
+                                fullName = name,
+                                email = resolvedEmail,
+                                phone = phone,
+                                fullPhone = fullPhone,
+                                dob = dob
+                            )
+                        }
+                    } catch (ignored: Exception) {}
+                }
+
+                // 2B: Fallback query on users collection where email == resolvedEmail
+                if (existingProfileByEmail == null && resolvedEmail.isNotBlank()) {
                     try {
                         val querySnapshot = firestore.collection("users")
                             .whereEqualTo("email", resolvedEmail)
@@ -462,13 +510,37 @@ class AuthRepository(
                     } catch (ignored: Exception) {}
                 }
 
-                val profile = if (existingProfileByEmail != null) {
-                    val linked = existingProfileByEmail.copy(
-                        uid = user.uid,
-                        updatedAt = System.currentTimeMillis()
-                    )
+                // 2C: Check if Firebase Auth has existing password method for this email
+                var hasExistingAuthMethods = false
+                if (existingProfileByEmail == null && resolvedEmail.isNotBlank()) {
+                    try {
+                        val methods = auth.fetchSignInMethodsForEmail(resolvedEmail).await().signInMethods
+                        if (!methods.isNullOrEmpty() && methods.contains("password")) {
+                            hasExistingAuthMethods = true
+                        }
+                    } catch (ignored: Exception) {}
+                }
+
+                val isExistingUser = existingProfileByEmail != null || hasExistingAuthMethods
+
+                if (isExistingUser) {
+                    val linked = if (existingProfileByEmail != null) {
+                        existingProfileByEmail.copy(
+                            uid = user.uid,
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    } else {
+                        UserProfile(
+                            uid = user.uid,
+                            fullName = resolvedName,
+                            email = resolvedEmail,
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis()
+                        )
+                    }
+
                     // If previous registration was under a different UID (e.g. password auth), migrate medicines and history
-                    val oldUid = existingProfileByEmail.uid
+                    val oldUid = existingProfileByEmail?.uid ?: ""
                     if (oldUid.isNotBlank() && oldUid != user.uid) {
                         try {
                             val oldMeds = firestore.collection("users").document(oldUid).collection("medicines").get().await()
@@ -489,21 +561,36 @@ class AuthRepository(
                             }
                         } catch (ignored: Exception) {}
                     }
-                    linked
-                } else {
-                    UserProfile(
-                        uid = user.uid,
-                        fullName = resolvedName,
-                        email = resolvedEmail,
-                        createdAt = System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis()
-                    )
-                }
 
-                try {
-                    docRef.set(profile).await()
-                } catch (ignored: Exception) {}
-                Result.success(profile)
+                    try {
+                        docRef.set(linked).await()
+                    } catch (ignored: Exception) {}
+
+                    try {
+                        firestore.collection("users_by_email").document(resolvedEmail).set(
+                            mapOf(
+                                "uid" to user.uid,
+                                "fullName" to linked.fullName,
+                                "email" to resolvedEmail,
+                                "phone" to linked.phone,
+                                "fullPhone" to linked.fullPhone,
+                                "dob" to linked.dob,
+                                "updatedAt" to System.currentTimeMillis()
+                            )
+                        ).await()
+                    } catch (ignored: Exception) {}
+
+                    Result.success(linked)
+                } else {
+                    // Brand new Gmail that has NEVER created an account in MedMate.
+                    // Reject login and redirect to Create Account tab with details prefilled.
+                    try {
+                        user.delete().await()
+                    } catch (e: Exception) {
+                        auth.signOut()
+                    }
+                    Result.failure(IllegalStateException("GOOGLE_USER_NOT_REGISTERED:$resolvedEmail:$resolvedName"))
+                }
             }
         } catch (e: FirebaseAuthUserCollisionException) {
             Result.failure(IllegalStateException("ACCOUNT_EXISTS_WITH_PASSWORD:$cleanEmail"))
