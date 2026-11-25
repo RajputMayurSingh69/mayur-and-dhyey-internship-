@@ -37,7 +37,8 @@ data class AuthUiState(
     val userProfile: UserProfile? = null,
     val switchToTab: AuthTab? = null,
     val prefillEmail: String? = null,
-    val prefillName: String? = null
+    val prefillName: String? = null,
+    val pendingGoogleCredential: com.google.firebase.auth.AuthCredential? = null
 )
 
 class AuthViewModel(
@@ -59,9 +60,10 @@ class AuthViewModel(
      * If user is unverified, marks isEmailVerificationPending = true.
      */
     fun signIn(email: String, pass: String) {
+        val pendingCred = _uiState.value.pendingGoogleCredential
         _uiState.update { it.copy(isLoading = true, errorMessage = null, infoMessage = null) }
         viewModelScope.launch {
-            val result = authRepository.signIn(email, pass)
+            val result = authRepository.signIn(email, pass, pendingCred)
             result.fold(
                 onSuccess = { profile ->
                     securityPreferences?.cachedUserId = profile.uid
@@ -73,6 +75,7 @@ class AuthViewModel(
                                 isLoading = false,
                                 isSuccess = true,
                                 userProfile = profile,
+                                pendingGoogleCredential = null,
                                 errorMessage = null,
                                 infoMessage = null
                             )
@@ -84,6 +87,7 @@ class AuthViewModel(
                                 isLoading = false,
                                 isEmailVerificationPending = true,
                                 userProfile = profile,
+                                pendingGoogleCredential = null,
                                 errorMessage = null,
                                 infoMessage = null
                             )
@@ -538,7 +542,8 @@ class AuthViewModel(
                             _uiState.update {
                                 it.copy(
                                     isLoading = false,
-                                    errorMessage = "This account was created with a password. Please enter your password to sign in.",
+                                    pendingGoogleCredential = credential,
+                                    errorMessage = "This account was registered with a password. Please enter your password to sign in and link Google.",
                                     switchToTab = AuthTab.SIGN_IN,
                                     prefillEmail = targetEmail
                                 )

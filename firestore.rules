@@ -218,7 +218,10 @@ service cloud.firestore {
     // 1G: users/{userId}: Owner can read their own profile doc.
     // Client write is allowed for owner with strict schema validation; Admin SDK / Cloud Functions also manage this.
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        (resource.data.email != null && request.auth.token.email != null && resource.data.email == request.auth.token.email)
+      );
       allow create: if request.auth != null && request.auth.uid == userId && isValidUser(request.resource.data, userId);
       allow update: if request.auth != null && request.auth.uid == userId &&
                        (!('rateLimitedUntil' in resource.data) || resource.data.rateLimitedUntil == null || request.time > resource.data.rateLimitedUntil) &&

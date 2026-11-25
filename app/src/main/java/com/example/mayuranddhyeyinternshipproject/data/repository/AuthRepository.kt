@@ -52,10 +52,22 @@ class AuthRepository(
     fun validatePassword(password: String): String? = ValidationUtils.validatePassword(password)
 
     /**
-     * Checks if an email is already registered in Firebase Authentication.
+     * Checks if an email is already registered in Firebase Authentication or Firestore.
      */
     suspend fun checkEmailRegistered(email: String): Boolean {
-        val cleanEmail = email.trim()
+        val cleanEmail = email.trim().lowercase(Locale.ROOT)
+        val existsInFirestore = try {
+            val query = firestore.collection("users")
+                .whereEqualTo("email", cleanEmail)
+                .limit(1)
+                .get()
+                .await()
+            !query.isEmpty
+        } catch (e: Exception) {
+            false
+        }
+        if (existsInFirestore) return true
+
         return try {
             val result = auth.fetchSignInMethodsForEmail(cleanEmail).await()
             !result.signInMethods.isNullOrEmpty()
@@ -265,19 +277,31 @@ class AuthRepository(
     /**
      * Signs in user with email and password only. Never requires OTP on sign-in.
      * Verifies against Firebase Auth and Firestore user profile.
+     * Optionally links pending Google credential if previously collided.
      */
-    suspend fun signIn(email: String, password: String): Result<UserProfile> {
+    suspend fun signIn(
+        email: String,
+        password: String,
+        pendingCredentialToLink: AuthCredential? = null
+    ): Result<UserProfile> {
         validateEmail(email)?.let { return Result.failure(IllegalArgumentException(it)) }
         if (password.isEmpty()) {
             return Result.failure(IllegalArgumentException("Password cannot be empty."))
         }
 
-        val cleanEmail = email.trim()
+        val cleanEmail = email.trim().lowercase(Locale.ROOT)
 
         return try {
             val authResult = auth.signInWithEmailAndPassword(cleanEmail, password).await()
             val user = authResult.user
                 ?: return Result.failure(IllegalStateException("Sign in failed. Please try again."))
+
+            // If user previously encountered a collision when signing in with Google, link it now
+            if (pendingCredentialToLink != null) {
+                try {
+                    user.linkWithCredential(pendingCredentialToLink).await()
+                } catch (ignored: Exception) {}
+            }
 
             val profile = try {
                 val doc = firestore.collection("users").document(user.uid).get().await()
@@ -301,22 +325,7 @@ class AuthRepository(
         } catch (e: FirebaseAuthInvalidUserException) {
             Result.failure(IllegalStateException("USER_NOT_FOUND:$cleanEmail"))
         } catch (e: FirebaseAuthInvalidCredentialsException) {
-            val methods = try {
-                auth.fetchSignInMethodsForEmail(cleanEmail).await().signInMethods
-            } catch (ex: Exception) {
-                null
-            }
-            when {
-                methods != null && methods.isEmpty() -> {
-                    Result.failure(IllegalStateException("USER_NOT_FOUND:$cleanEmail"))
-                }
-                methods != null && methods.contains("google.com") && !methods.contains("password") -> {
-                    Result.failure(IllegalStateException("GOOGLE_ACCOUNT_ONLY:$cleanEmail"))
-                }
-                else -> {
-                    Result.failure(IllegalStateException("Incorrect password. Please try again or reset your password."))
-                }
-            }
+            Result.failure(IllegalStateException("Incorrect password. Please try again or reset your password."))
         } catch (e: FirebaseNetworkException) {
             Result.failure(IllegalStateException("Network connection error. Please check your internet connection."))
         } catch (e: Exception) {
@@ -407,11 +416,9 @@ class AuthRepository(
 
     /**
      * Signs in using a Google AuthCredential on the Sign In tab.
-     */
-    /**
-     * Signs in using a Google AuthCredential on the Sign In tab.
-     * Verifies if the user is already registered in Firebase.
-     * If not registered, returns GOOGLE_USER_NOT_REGISTERED to prompt registration.
+     * Verifies if the user is already registered in Firebase or Firestore.
+     * If user registered via email/password, links their profile.
+     * If not registered anywhere, returns GOOGLE_USER_NOT_REGISTERED to prompt registration.
      */
     suspend fun signInWithGoogleCredential(
         credential: AuthCredential,
@@ -420,25 +427,15 @@ class AuthRepository(
     ): Result<UserProfile> {
         val cleanEmail = (googleEmail.takeIf { it.isNotBlank() } ?: "").trim().lowercase(Locale.ROOT)
 
-        // 1. Check if this email is already registered in Firebase Authentication
-        val existingMethods = try {
-            if (cleanEmail.isNotBlank()) {
-                auth.fetchSignInMethodsForEmail(cleanEmail).await().signInMethods
-            } else null
-        } catch (e: Exception) {
-            null
-        }
-
-        // If email was checked and has NO registered sign-in methods in Firebase -> Not registered!
-        if (cleanEmail.isNotBlank() && existingMethods != null && existingMethods.isEmpty()) {
-            return Result.failure(IllegalStateException("GOOGLE_USER_NOT_REGISTERED:$cleanEmail:$googleName"))
-        }
-
         return try {
             val authResult = auth.signInWithCredential(credential).await()
             val user = authResult.user
                 ?: return Result.failure(IllegalStateException("Google sign in failed. Please try again."))
 
+            val resolvedEmail = (user.email?.takeIf { it.isNotBlank() } ?: cleanEmail).trim().lowercase(Locale.ROOT)
+            val resolvedName = user.displayName?.takeIf { it.isNotBlank() } ?: googleName.takeIf { it.isNotBlank() } ?: "User"
+
+            // 1. Check if user already has a profile at users/{user.uid}
             val docRef = firestore.collection("users").document(user.uid)
             val doc = try {
                 docRef.get().await()
@@ -450,20 +447,49 @@ class AuthRepository(
             if (existing != null) {
                 Result.success(existing)
             } else {
-                // User is registered in Auth (e.g. via password or Google). Ensure user profile exists in Firestore:
-                val resolvedEmail = user.email?.takeIf { it.isNotBlank() } ?: cleanEmail
-                val resolvedName = user.displayName?.takeIf { it.isNotBlank() } ?: googleName.takeIf { it.isNotBlank() } ?: "User"
-                val profile = UserProfile(
-                    uid = user.uid,
-                    fullName = resolvedName,
-                    email = resolvedEmail,
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis()
-                )
-                try {
-                    docRef.set(profile).await()
-                } catch (ignored: Exception) {}
-                Result.success(profile)
+                // 2. Check if a profile exists for this email under a previous registration (e.g. password signup)
+                var existingProfileByEmail: UserProfile? = null
+                if (resolvedEmail.isNotBlank()) {
+                    try {
+                        val querySnapshot = firestore.collection("users")
+                            .whereEqualTo("email", resolvedEmail)
+                            .limit(1)
+                            .get()
+                            .await()
+                        if (!querySnapshot.isEmpty) {
+                            existingProfileByEmail = querySnapshot.documents.first().toObject(UserProfile::class.java)
+                        }
+                    } catch (ignored: Exception) {}
+                }
+
+                if (existingProfileByEmail != null) {
+                    // Profile found! Link this Google user with their existing profile data
+                    val linkedProfile = existingProfileByEmail.copy(
+                        uid = user.uid,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    try {
+                        docRef.set(linkedProfile).await()
+                    } catch (ignored: Exception) {}
+                    Result.success(linkedProfile)
+                } else if (authResult.additionalUserInfo?.isNewUser == true) {
+                    // Completely new user who has never created an account on MedMate
+                    try { user.delete().await() } catch (e: Exception) { auth.signOut() }
+                    Result.failure(IllegalStateException("GOOGLE_USER_NOT_REGISTERED:$resolvedEmail:$resolvedName"))
+                } else {
+                    // Returning existing Google user whose profile was missing
+                    val profile = UserProfile(
+                        uid = user.uid,
+                        fullName = resolvedName,
+                        email = resolvedEmail,
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    try {
+                        docRef.set(profile).await()
+                    } catch (ignored: Exception) {}
+                    Result.success(profile)
+                }
             }
         } catch (e: FirebaseAuthUserCollisionException) {
             Result.failure(IllegalStateException("ACCOUNT_EXISTS_WITH_PASSWORD:$cleanEmail"))

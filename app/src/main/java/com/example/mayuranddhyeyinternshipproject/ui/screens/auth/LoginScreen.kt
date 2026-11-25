@@ -242,7 +242,7 @@ fun LoginScreen(
                 if (resId != 0) context.getString(resId) else null
             } catch (e: Exception) {
                 null
-            }
+            } ?: "93847664545-d6vj2485tfiiio2g8dqbapqatt09im73.apps.googleusercontent.com"
 
             val gsoBuilder = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestEmail()
